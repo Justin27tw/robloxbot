@@ -44,7 +44,6 @@ with st.sidebar:
 # === API 抓取功能區 ===
 
 def get_short_name(full_name):
-    """自動擷取中括號內的字作為簡稱"""
     match = re.search(r'\[(.*?)\]', full_name)
     if match:
         return match.group(1)
@@ -85,7 +84,6 @@ def get_user_thumbnail(user_id):
     return "https://tr.rbxcdn.com/38c6edcb50633730ff4cf39ac8859840/150/150/AvatarHeadshot/Png"
 
 def get_user_groups(user_id):
-    """取得社群資訊，並加入 Rank (階級數值 1~255) 供視覺化使用"""
     url = f"https://groups.roblox.com/v1/users/{user_id}/groups/roles"
     try:
         response = requests.get(url)
@@ -95,7 +93,7 @@ def get_user_groups(user_id):
                 item["group"]["id"]: {
                     "name": item["group"]["name"], 
                     "role": item["role"]["name"],
-                    "rank": item["role"]["rank"] # <--- 新增抓取數值化階級
+                    "rank": item["role"]["rank"]
                 } for item in data
             }
         elif response.status_code == 429:
@@ -136,6 +134,7 @@ def get_group_allies(group_id):
     return allies
 
 def get_user_friends(user_id):
+    """取得好友 (Roblox 官方上限為絕對的 200 人)"""
     url = f"https://friends.roblox.com/v1/users/{user_id}/friends"
     try:
         response = requests.get(url)
@@ -146,11 +145,16 @@ def get_user_friends(user_id):
         pass
     return []
 
-def get_user_followers(user_id, limit=100):
+# --- 升級：支援無限抓取追蹤者 ---
+def get_user_followers(user_id, limit=None):
     followers = []
     cursor = ""
-    while cursor is not None and len(followers) < limit:
-        url = f"https://friends.roblox.com/v1/users/{user_id}/followers?limit=100&cursor={cursor}"
+    while cursor is not None:
+        if limit is not None and len(followers) >= limit:
+            break
+        url = f"https://friends.roblox.com/v1/users/{user_id}/followers?limit=100"
+        if cursor:
+            url += f"&cursor={cursor}"
         try:
             response = requests.get(url)
             if response.status_code == 200:
@@ -159,11 +163,43 @@ def get_user_followers(user_id, limit=100):
                 followers.extend([{"id": user["id"], "name": user["name"]} for user in data])
                 cursor = json_data.get("nextPageCursor")
                 time.sleep(REQUEST_DELAY)
+            elif response.status_code == 429:
+                time.sleep(5)
             else:
                 break
         except Exception:
             break
-    return followers[:limit]
+    if limit is not None:
+        return followers[:limit]
+    return followers
+
+# --- 新增：支援無限抓取正在追蹤名單 (Followings) ---
+def get_user_followings(user_id, limit=None):
+    followings = []
+    cursor = ""
+    while cursor is not None:
+        if limit is not None and len(followings) >= limit:
+            break
+        url = f"https://friends.roblox.com/v1/users/{user_id}/followings?limit=100"
+        if cursor:
+            url += f"&cursor={cursor}"
+        try:
+            response = requests.get(url)
+            if response.status_code == 200:
+                json_data = response.json()
+                data = json_data.get("data", [])
+                followings.extend([{"id": user["id"], "name": user["name"]} for user in data])
+                cursor = json_data.get("nextPageCursor")
+                time.sleep(REQUEST_DELAY)
+            elif response.status_code == 429:
+                time.sleep(5)
+            else:
+                break
+        except Exception:
+            break
+    if limit is not None:
+        return followings[:limit]
+    return followings
 
 def get_group_roles(group_id):
     url = f"https://groups.roblox.com/v1/groups/{group_id}/roles"
@@ -183,7 +219,7 @@ def get_members_of_roles(group_id, selected_roles):
     for role in selected_roles:
         role_id = role["id"]
         role_name = role["name"]
-        role_rank = role.get("rank", 0) # <--- 同步記錄 Rank 數值
+        role_rank = role.get("rank", 0)
         
         cursor = ""
         while cursor is not None:
@@ -219,25 +255,21 @@ def get_members_of_roles(group_id, selected_roles):
 # === UI 排版與視覺化資料處理函數 ===
 
 def get_rank_style(rank_num):
-    """【動態視覺核心】依照 Rank 數值給予對應的警告色與圖示"""
     if rank_num == 255:
-        return "#8B0000", "👑" # 深紅 (最高權限 Owner)
+        return "#8B0000", "👑" 
     elif rank_num >= 200:
-        return "#FF4B4B", "🔴" # 紅色 (高階管理 Admin)
+        return "#FF4B4B", "🔴" 
     elif rank_num >= 100:
-        return "#FF8C00", "🟠" # 橘色 (中階幹部 Officer)
+        return "#FF8C00", "🟠" 
     else:
-        return "#4682B4", "🔵" # 鋼藍色 (一般成員 Member)
+        return "#4682B4", "🔵" 
 
 def format_badge_html(g_data, is_core):
-    """將社群資訊轉換為精美的彩色標籤 HTML"""
     bg_color, icon = get_rank_style(g_data['rank_num'])
     type_icon = "🏴" if is_core else "⚠️"
-    # 設計帶有陰影的圓角徽章
     return f"<span style='background-color: {bg_color}; color: white; padding: 4px 10px; border-radius: 6px; font-size: 13px; font-weight: 600; margin-right: 6px; display: inline-block; margin-bottom: 6px; box-shadow: 0 2px 4px rgba(0,0,0,0.2);'>{type_icon} {g_data['group_name']} | {icon} {g_data['role_name']} (Lv.{g_data['rank_num']})</span>"
 
 def format_df_string(g_data, is_core):
-    """將社群資訊轉換為表格內純文字排版"""
     _, icon = get_rank_style(g_data['rank_num'])
     type_icon = "🏴" if is_core else "⚠️"
     return f"{type_icon} {g_data['group_name']} - {icon} {g_data['role_name']} (Lv.{g_data['rank_num']})"
@@ -289,7 +321,6 @@ def draw_alert_card(alert_data):
             st.markdown(f"#### 🚨 {alert_data['user_name']} `(ID: {alert_data['user_id']})`")
             st.caption(f"身分關聯: **{alert_data['relation']}**")
             
-            # 套用動態顏色標籤
             core_html = "".join([format_badge_html(g, True) for g in alert_data["core_groups"]])
             st.markdown(core_html, unsafe_allow_html=True)
             
@@ -352,7 +383,15 @@ else:
     # ================= TAB 1: 玩家掃描 =================
     with tab1:
         st.subheader("針對單一目標及其社交圈進行掃描")
-        user_input = st.text_input("請輸入目標玩家名稱或 User ID：", placeholder="例如: builderman 或 156", key="input_player")
+        
+        col1, col2 = st.columns([2, 1])
+        with col1:
+            user_input = st.text_input("請輸入目標玩家名稱或 User ID：", placeholder="例如: builderman 或 156", key="input_player")
+        with col2:
+            st.markdown("<br>", unsafe_allow_html=True)
+            # --- 新增：深度掃描全域開關 ---
+            scan_all_social = st.checkbox("⚠️ 解除人數限制 (全數掃描追蹤名單)", help="打勾後將無視 100 人上限，將名單徹底翻找完畢。如果目標有數十萬粉絲，可能耗時極長。")
+            social_limit = None if scan_all_social else 100
 
         if st.button("啟動掃描程序", type="primary", key="btn_player"):
             if not user_input:
@@ -377,11 +416,11 @@ else:
                             st.info("✅ 目標本體安全，未檢測到危險社群足跡。")
 
                     st.markdown("#### 👥 [階段二] 社交圈 (好友) 檢查")
-                    friends = get_user_friends(target_user_id)
+                    friends = get_user_friends(target_user_id) # 官方規定好友最多必定為 200 人
                     if not friends:
                         st.info("目標無公開好友資料。")
                     else:
-                        st.write(f"取得 {len(friends)} 名聯繫人，開始比對...")
+                        st.write(f"取得 {len(friends)} 名聯繫人 (已達 Roblox 官方最大好友上限)，開始比對...")
                         friend_bar = st.progress(0)
                         friend_status = st.empty()
                         alerted_friends = [] 
@@ -404,12 +443,43 @@ else:
                         friend_status.text("✔️ 好友圈檢查完畢！")
                         draw_summary_dashboard(alerted_friends, len(friends), "好友圈掃描")
 
-                    st.markdown("#### 👀 [階段三] 追蹤者抽樣 (前 100 名)")
-                    followers = get_user_followers(target_user_id, limit=100)
+                    # --- 新增階段：關注中 (Followings) 檢查 ---
+                    st.markdown("#### 👁️‍🗨️ [階段三] 目標關注名單 (Followings) 檢查")
+                    followings = get_user_followings(target_user_id, limit=social_limit)
+                    if not followings:
+                        st.info("目標並未追蹤任何人，或隱私設定為不公開。")
+                    else:
+                        limit_text = "全部" if scan_all_social else f"前 {social_limit} 名"
+                        st.write(f"取得 {limit_text} 正在追蹤的對象，共 {len(followings)} 人，開始比對...")
+                        following_bar = st.progress(0)
+                        following_status = st.empty()
+                        alerted_followings = []
+                        
+                        start_time = time.time()
+                        for index, user_followed in enumerate(followings):
+                            following_bar.progress((index + 1) / len(followings))
+                            
+                            elapsed_time = time.time() - start_time
+                            avg_time_per_user = elapsed_time / (index + 1)
+                            m, s = divmod(int(avg_time_per_user * (len(followings) - (index + 1))), 60)
+                            
+                            following_status.text(f"檢查中 {index + 1}/{len(followings)}: {user_followed['name']} ⏳ 預估剩餘: {m}分{s}秒")
+                            
+                            alert_data = fetch_alert_data(user_followed["id"], user_followed["name"], "目標追蹤的對象", WARNING_GROUP_IDS)
+                            if alert_data:
+                                draw_alert_card(alert_data)
+                                alerted_followings.append(alert_data)
+                                
+                        following_status.text("✔️ 關注名單檢查完畢！")
+                        draw_summary_dashboard(alerted_followings, len(followings), "關注對象(Followings)掃描")
+
+                    st.markdown("#### 👀 [階段四] 追蹤者 (Followers) 檢查")
+                    followers = get_user_followers(target_user_id, limit=social_limit)
                     if not followers:
                         st.info("目標無公開追蹤者資料。")
                     else:
-                        st.write(f"取得 {len(followers)} 名追蹤者，開始比對...")
+                        limit_text = "所有" if scan_all_social else f"前 {social_limit} 名"
+                        st.write(f"取得 {limit_text} 追蹤者，共 {len(followers)} 人，開始比對...")
                         follower_bar = st.progress(0)
                         follower_status = st.empty()
                         alerted_followers = []
@@ -424,13 +494,13 @@ else:
                             
                             follower_status.text(f"檢查中 {index + 1}/{len(followers)}: {follower['name']} ⏳ 預估剩餘: {m}分{s}秒")
                             
-                            alert_data = fetch_alert_data(follower["id"], follower["name"], "追蹤者", WARNING_GROUP_IDS)
+                            alert_data = fetch_alert_data(follower["id"], follower["name"], "粉絲/追蹤者", WARNING_GROUP_IDS)
                             if alert_data:
                                 draw_alert_card(alert_data)
                                 alerted_followers.append(alert_data)
                                 
                         follower_status.text("✔️ 追蹤者檢查完畢！")
-                        draw_summary_dashboard(alerted_followers, len(followers), "追蹤者掃描")
+                        draw_summary_dashboard(alerted_followers, len(followers), "追蹤者(Followers)掃描")
 
                     st.balloons() 
 
