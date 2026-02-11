@@ -1,19 +1,18 @@
 import streamlit as st
 import requests
 import time
+import pandas as pd # 新增：用來製作精美的排版表格
 
 # ================= 配置區 =================
-# 為了避免被 Roblox API 封鎖 (HTTP 429 Too Many Requests)，設定每次請求的延遲秒數
 REQUEST_DELAY = 0.5  
 # ==========================================
 
-# 網頁基礎設定
-st.set_page_config(page_title="Roblox 社群預警比對系統", page_icon="🚨", layout="centered")
+# 網頁基礎設定 (改為 wide 寬螢幕模式，讓表格更好看)
+st.set_page_config(page_title="Roblox 社群預警比對系統", page_icon="🚨", layout="wide")
 
 # ================= 暫存狀態初始化 =================
 if 'group_roles_cache' not in st.session_state:
     st.session_state.group_roles_cache = {}
-# 新增：快取預警社群的「相關同盟群組」，避免重複消耗 API 請求
 if 'group_allies_cache' not in st.session_state:
     st.session_state.group_allies_cache = {}
 
@@ -31,7 +30,6 @@ if warning_input:
 
 st.sidebar.divider()
 st.sidebar.write(f"目前已載入 **{len(WARNING_GROUP_IDS)}** 個預警社群。")
-# ========================================================
 
 # === API 抓取功能區 ===
 
@@ -60,13 +58,11 @@ def resolve_user_input(user_input):
     return None, None
 
 def get_user_groups(user_id):
-    """取得指定玩家加入的所有社群 (包含名稱與 Rank 職階)"""
     url = f"https://groups.roblox.com/v1/users/{user_id}/groups/roles"
     try:
         response = requests.get(url)
         if response.status_code == 200:
             data = response.json().get("data", [])
-            # 修改：回傳字典中包含 name (社群名) 與 role (該玩家職階)
             return {
                 item["group"]["id"]: {
                     "name": item["group"]["name"], 
@@ -81,8 +77,6 @@ def get_user_groups(user_id):
     return {}
 
 def get_group_allies(group_id):
-    """抓取特定社群的同盟(Allies)，作為關聯群組掃描依據"""
-    # 若已快取過，直接返回，避免浪費 API 與時間
     if group_id in st.session_state.group_allies_cache:
         return st.session_state.group_allies_cache[group_id]
         
@@ -109,7 +103,6 @@ def get_group_allies(group_id):
         except Exception:
             break
             
-    # 將抓完的名單存入快取中
     st.session_state.group_allies_cache[group_id] = allies
     return allies
 
@@ -192,47 +185,78 @@ def get_members_of_roles(group_id, selected_roles):
                 break
     return members
 
-def check_and_alert(user_id, user_name, relation_type, warning_group_ids):
-    """核心比對邏輯：包含本群組掃描，以及「關聯群組」交叉掃描與 Rank 回傳"""
-    user_groups = get_user_groups(user_id) # 回傳 {gid: {"name": 社群名, "role": 職階}}
+# === UI 排版與資料處理函數 ===
+
+def fetch_alert_data(user_id, user_name, relation_type, warning_group_ids):
+    """資料層：檢查並回傳結構化的預警資料字典，不再回傳字串"""
+    user_groups = get_user_groups(user_id)
     time.sleep(REQUEST_DELAY)
     
-    # 尋找是否加入了任何「核心預警名單」
     matched_ids = set(user_groups.keys()).intersection(warning_group_ids)
-    
-    if matched_ids:
-        alert_msg = f"🚨 **[預警]** {relation_type} **{user_name}** (ID: {user_id}) 位於監控社群中！\n"
+    if not matched_ids:
+        return None
         
-        for gid in matched_ids:
-            g_info = user_groups[gid]
-            # 印出核心預警社群與該玩家在裡面的 Rank
-            alert_msg += f"- 🏴 **核心預警社群**: {g_info['name']} (ID: {gid}) | 職階: **{g_info['role']}**\n"
-            
-            # === 同步搜尋該預警社群的「相關群組 (同盟)」 ===
-            allies = get_group_allies(gid)
-            if allies:
-                # 交叉比對：看該玩家除了預警核心社群外，有沒有「同時」加入該社群的任何相關組織
-                matched_allies = set(user_groups.keys()).intersection(set(allies.keys()))
+    report = {
+        "user_name": user_name,
+        "user_id": user_id,
+        "relation": relation_type,
+        "core_groups": [],
+        "ally_groups": []
+    }
+    
+    for gid in matched_ids:
+        g_info = user_groups[gid]
+        report["core_groups"].append(f"[{gid}] {g_info['name']} (職階: {g_info['role']})")
+        
+        allies = get_group_allies(gid)
+        if allies:
+            matched_allies = set(user_groups.keys()).intersection(set(allies.keys()))
+            for ally_id in matched_allies:
+                ally_info = user_groups[ally_id]
+                report["ally_groups"].append(f"[{ally_id}] {ally_info['name']} (職階: {ally_info['role']})")
                 
-                if matched_allies:
-                    alert_msg += f"  ↳ ⚠️ **延伸警告**：該人員亦加入了此社群的「相關附屬群組」：\n"
-                    for ally_id in matched_allies:
-                        ally_info = user_groups[ally_id]
-                        # 回傳他所加入的附屬群組名稱與他在裡面的 Rank (可能有多個)
-                        alert_msg += f"      ▪️ {ally_info['name']} (ID: {ally_id}) | 職階: **{ally_info['role']}**\n"
-            # =======================================================
+    return report
+
+def draw_alert_card(alert_data):
+    """介面層：畫出單筆預警的摺疊面板"""
+    with st.expander(f"🚨 [發現目標] {alert_data['relation']} : {alert_data['user_name']} (ID: {alert_data['user_id']})", expanded=False):
+        st.markdown("**🏴 核心預警社群：**")
+        for g in alert_data["core_groups"]:
+            st.markdown(f"- {g}")
             
-        return alert_msg
-    return None
+        if alert_data["ally_groups"]:
+            st.markdown("**⚠️ 延伸附屬群組：**")
+            for a in alert_data["ally_groups"]:
+                st.markdown(f"- {a}")
+
+def draw_summary_table(alerted_list, title="掃描統計結果"):
+    """介面層：將收集到的所有預警名單畫成一張精美的 DataFrame 表格"""
+    st.error(f"⚠️ **{title}**：本次掃描中，共抓出 **{len(alerted_list)}** 名人員！")
+    
+    # 將資料轉換為 Pandas 格式以便排版
+    df_data = []
+    for m in alerted_list:
+        df_data.append({
+            "身分 / 關聯": m["relation"],
+            "Roblox 名稱": m["user_name"],
+            "玩家 ID": str(m["user_id"]),
+            "加入的預警社群 (核心)": "\n".join(m["core_groups"]),
+            "加入的附屬群組 (同盟)": "\n".join(m["ally_groups"]) if m["ally_groups"] else "無"
+        })
+        
+    df = pd.DataFrame(df_data)
+    # 使用 streamlit dataframe，設定寬度自動展開
+    st.dataframe(df, use_container_width=True)
+
 
 # ================= Streamlit 網頁介面 =================
-st.title("🚨 Roblox 社群交叉比對與預警系統")
-st.write("透過輸入玩家或社群的資料，自動比對是否與指定的「黑名單社群」有重疊。")
+st.title("🚨 Roblox 社群深度交叉比對系統")
+st.write("透過輸入玩家或社群的資料，自動比對是否與指定的「黑名單社群」及其附屬群組有重疊。")
 
 if not WARNING_GROUP_IDS:
     st.error("👈 系統尚未準備就緒：請先在左側邊欄設定至少一個有效的「黑名單社群 ID」！")
 else:
-    tab1, tab2 = st.tabs(["👤 玩家與關聯掃描", "🛡️ 特定社群進階掃描"])
+    tab1, tab2 = st.tabs(["👤 單一玩家關聯掃描", "🛡️ 特定社群進階深度掃描"])
 
     # ================= TAB 1: 玩家掃描 =================
     with tab1:
@@ -249,16 +273,17 @@ else:
                         target_user_id, target_user_name = resolve_user_input(user_input)
                     
                     if not target_user_id:
-                        st.error(f"❌ 找不到名為或 ID 為「{user_input}」的玩家，請確認輸入是否正確。")
+                        st.error(f"❌ 找不到名為或 ID 為「{user_input}」的玩家。")
                     else:
                         st.success(f"✅ 成功找到玩家！名稱：**{target_user_name}** (ID: {target_user_id})")
                         st.divider()
 
                         st.markdown("#### 👤 [1] 玩家本人檢查")
                         with st.spinner("正在檢查玩家本人的社群..."):
-                            alert = check_and_alert(target_user_id, target_user_name, "目標玩家", WARNING_GROUP_IDS)
-                            if alert:
-                                st.error(alert)
+                            alert_data = fetch_alert_data(target_user_id, target_user_name, "目標玩家", WARNING_GROUP_IDS)
+                            if alert_data:
+                                draw_alert_card(alert_data)
+                                draw_summary_table([alert_data], "本人掃描結果")
                             else:
                                 st.info("✅ 玩家本人未加入任何預警社群。")
 
@@ -283,14 +308,16 @@ else:
                                 
                                 friend_status.text(f"正在檢查好友 {index + 1}/{len(friends)}: {friend['name']} ⏳ 預估剩餘: {m}分{s}秒")
                                 
-                                alert = check_and_alert(friend["id"], friend["name"], "好友", WARNING_GROUP_IDS)
-                                if alert:
-                                    st.error(alert)
-                                    alerted_friends.append(friend['name'])
+                                alert_data = fetch_alert_data(friend["id"], friend["name"], "好友", WARNING_GROUP_IDS)
+                                if alert_data:
+                                    draw_alert_card(alert_data)
+                                    alerted_friends.append(alert_data)
                                     
                             friend_status.text("✔️ 好友名單檢查完畢！")
                             if alerted_friends:
-                                st.warning(f"⚠️ **統計**：共 **{len(alerted_friends)}** 位好友在預警名單內！\n\n**名單**：{', '.join(alerted_friends)}")
+                                draw_summary_table(alerted_friends, "好友名單掃描結果")
+                            else:
+                                st.info("✅ 所有好友皆未加入預警社群。")
 
                         st.markdown("#### 👀 [3] 追蹤者名單檢查 (前 100 名)")
                         followers = get_user_followers(target_user_id, limit=100)
@@ -313,14 +340,16 @@ else:
                                 
                                 follower_status.text(f"正在檢查追蹤者 {index + 1}/{len(followers)}: {follower['name']} ⏳ 預估剩餘: {m}分{s}秒")
                                 
-                                alert = check_and_alert(follower["id"], follower["name"], "追蹤者", WARNING_GROUP_IDS)
-                                if alert:
-                                    st.error(alert)
-                                    alerted_followers.append(follower['name'])
+                                alert_data = fetch_alert_data(follower["id"], follower["name"], "追蹤者", WARNING_GROUP_IDS)
+                                if alert_data:
+                                    draw_alert_card(alert_data)
+                                    alerted_followers.append(alert_data)
                                     
                             follower_status.text("✔️ 追蹤者名單檢查完畢！")
                             if alerted_followers:
-                                st.warning(f"⚠️ **統計**：共 **{len(alerted_followers)}** 位追蹤者在預警名單內！\n\n**名單**：{', '.join(alerted_followers)}")
+                                draw_summary_table(alerted_followers, "追蹤者名單掃描結果")
+                            else:
+                                st.info("✅ 掃描的追蹤者皆未加入預警社群。")
 
                         st.balloons() 
                         st.success("🎉 玩家掃描作業已全部完成！")
@@ -390,20 +419,20 @@ else:
                             
                             member_status.text(f"正在檢查 {index + 1}/{len(members)}: {member['name']} (職階:{member['rank_name']}) ⏳ 預估剩餘: {m}分{s}秒")
                             
-                            relation_str = f"特定職階成員 [Rank: {member['rank_name']}]"
+                            relation_str = f"社群成員 [Rank: {member['rank_name']}]"
                             
-                            # 注意：所有複雜的神奇檢查邏輯，都在這個自訂的 check_and_alert 函數裡自動執行了！
-                            alert = check_and_alert(member["id"], member["name"], relation_str, WARNING_GROUP_IDS)
+                            # 獲取結構化的資料
+                            alert_data = fetch_alert_data(member["id"], member["name"], relation_str, WARNING_GROUP_IDS)
                             
-                            if alert:
-                                st.error(alert)
-                                alerted_members.append(f"{member['name']} (職階: {member['rank_name']})")
+                            if alert_data:
+                                draw_alert_card(alert_data)
+                                alerted_members.append(alert_data)
                                 
                         member_status.text("✔️ 特定職階成員掃描完畢！")
                         
-                        if not alerted_members:
-                            st.info("✅ 掃描的區間成員中，皆未加入任何預警社群。")
+                        if alerted_members:
+                            draw_summary_table(alerted_members, "特定社群深潛掃描結果")
                         else:
-                            st.warning(f"⚠️ **統計結果**：在這次掃描中，共有 **{len(alerted_members)}** 位成員在預警名單內！\n\n**抓到的名單**：\n" + "\n".join([f"- {m}" for m in alerted_members]))
+                            st.info("✅ 掃描的區間成員中，皆未加入任何預警社群。")
                     
                     st.balloons()
