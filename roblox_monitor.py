@@ -147,9 +147,10 @@ if st.button("開始掃描比對", type="primary"):
                     friend_bar = st.progress(0)
                     friend_status = st.empty()
                     
-                    found_friend_alerts = False
+                    # === 新增：用來儲存觸發預警的好友名單 ===
+                    alerted_friends = [] 
+                    
                     for index, friend in enumerate(friends):
-                        # 更新進度條與文字
                         progress_pct = (index + 1) / len(friends)
                         friend_bar.progress(progress_pct)
                         friend_status.text(f"正在檢查好友 {index + 1}/{len(friends)}: {friend['name']}")
@@ -157,11 +158,16 @@ if st.button("開始掃描比對", type="primary"):
                         alert = check_and_alert(friend["id"], friend["name"], "好友")
                         if alert:
                             st.error(alert)
-                            found_friend_alerts = True
+                            # 將抓到的好友名稱加入陣列中
+                            alerted_friends.append(friend['name'])
                             
                     friend_status.text("✔️ 好友名單檢查完畢！")
-                    if not found_friend_alerts:
+                    
+                    # === 新增：統計與回傳結果 ===
+                    if not alerted_friends:
                         st.info("✅ 所有好友皆未加入預警社群。")
+                    else:
+                        st.warning(f"⚠️ **統計結果**：共有 **{len(alerted_friends)}** 位好友在預警名單內！\n\n**抓到的名單**：{', '.join(alerted_friends)}")
 
                 # --- 3. 檢查追蹤者 ---
                 st.subheader("👀 [3] 追蹤者名單檢查 (前 100 名)")
@@ -173,7 +179,9 @@ if st.button("開始掃描比對", type="primary"):
                     follower_bar = st.progress(0)
                     follower_status = st.empty()
                     
-                    found_follower_alerts = False
+                    # === 新增：用來儲存觸發預警的追蹤者名單 ===
+                    alerted_followers = []
+                    
                     for index, follower in enumerate(followers):
                         progress_pct = (index + 1) / len(followers)
                         follower_bar.progress(progress_pct)
@@ -182,11 +190,16 @@ if st.button("開始掃描比對", type="primary"):
                         alert = check_and_alert(follower["id"], follower["name"], "追蹤者")
                         if alert:
                             st.error(alert)
-                            found_follower_alerts = True
+                            # 將抓到的追蹤者名稱加入陣列中
+                            alerted_followers.append(follower['name'])
                             
                     follower_status.text("✔️ 追蹤者名單檢查完畢！")
-                    if not found_follower_alerts:
+                    
+                    # === 新增：統計與回傳結果 ===
+                    if not alerted_followers:
                         st.info("✅ 前 100 名追蹤者皆未加入預警社群。")
+                    else:
+                        st.warning(f"⚠️ **統計結果**：共有 **{len(alerted_followers)}** 位追蹤者在預警名單內！\n\n**抓到的名單**：{', '.join(alerted_followers)}")
 
                 st.balloons() # 掃描完成撒氣球特效
                 st.success("🎉 掃描與交叉比對作業已全部完成！")
