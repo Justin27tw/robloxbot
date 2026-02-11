@@ -255,26 +255,58 @@ def get_members_of_roles(group_id, selected_roles):
 
 # === UI 排版與視覺化資料處理函數 ===
 
-def get_rank_style(rank_num):
-    """【純數值漸進色階】完全依照 LV 大小賦予 7 段顏色，拒絕客製化猜測"""
+def get_rank_style(rank_num, role_name=""):
+    """
+    【軍階關鍵字 ＋ 數值雙軌制】
+    優先判斷名稱中是否含有軍階字眼，若無軍事特徵，則降級啟用純數值防護網。
+    """
+    role_lower = str(role_name).lower()
     rank_num = int(rank_num)
-    if rank_num == 255:
-        return "#8B0000", "👑"  # 深紅 (Lv. 255)
-    elif rank_num >= 200:
-        return "#FF4B4B", "🔴"  # 紅色 (Lv. 200~254)
-    elif rank_num >= 150:
-        return "#FF8C00", "🟠"  # 橘色 (Lv. 150~199)
-    elif rank_num >= 100:
-        return "#DAA520", "🟡"  # 金黃 (Lv. 100~149)
-    elif rank_num >= 50:
-        return "#8A2BE2", "🟣"  # 紫色 (Lv. 50~99)
-    elif rank_num >= 10:
-        return "#4682B4", "🔵"  # 藍色 (Lv. 10~49)
+    
+    # 1. 優先攔截：將級 / 最高指揮 (Generals / Commanders)
+    if any(kw in role_lower for kw in ["將", "司令", "總長", "元首", "部長", "general", "admiral", "commander"]):
+        return "#8B0000", "👑"
+        
+    # 2. 校級 (Field Officers)
+    elif any(kw in role_lower for kw in ["校", "colonel", "major"]):
+        return "#FF4B4B", "🔴"
+        
+    # 3. 尉級 (Company Officers)
+    elif any(kw in role_lower for kw in ["尉", "captain", "lieutenant"]):
+        return "#FF8C00", "🟠"
+        
+    # 4. 士官級 (Non-Commissioned Officers)
+    elif any(kw in role_lower for kw in ["士", "sergeant", "corporal"]):
+        return "#DAA520", "🟡"
+        
+    # 5. 士兵級 (Enlisted)
+    elif any(kw in role_lower for kw in ["兵", "卒", "private", "seaman", "airman"]):
+        return "#4682B4", "🔵"
+        
+    # 6. 學官/新訓 (Trainees)
+    elif any(kw in role_lower for kw in ["生", "學", "新", "cadet", "recruit", "trainee"]):
+        return "#2E8B57", "🟢"
+        
+    # 7. 【防護網】：如果名稱裡完全沒有軍階關鍵字（例如一般民間群組），則嚴格依照 LV 數值給顏色！
     else:
-        return "#2E8B57", "🟢"  # 綠色 (Lv. 1~9)
+        if rank_num == 255:
+            return "#8B0000", "👑"
+        elif rank_num >= 200:
+            return "#FF4B4B", "🔴"
+        elif rank_num >= 150:
+            return "#FF8C00", "🟠"
+        elif rank_num >= 100:
+            return "#DAA520", "🟡"
+        elif rank_num >= 50:
+            return "#8A2BE2", "🟣"
+        elif rank_num >= 10:
+            return "#4682B4", "🔵"
+        else:
+            return "#2E8B57", "🟢"
 
 def format_badge_html(g_data, group_type):
-    bg_color, icon = get_rank_style(g_data['rank_num']) 
+    # 【修改】：傳入 rank_num 與 role_name 以啟動軍階雙軌判定
+    bg_color, icon = get_rank_style(g_data['rank_num'], g_data['role_name']) 
     
     if group_type == "core":
         type_icon = "🏴"
@@ -286,7 +318,8 @@ def format_badge_html(g_data, group_type):
     return f"<span style='background-color: {bg_color}; color: white; padding: 4px 10px; border-radius: 6px; font-size: 13px; font-weight: 600; margin-right: 6px; display: inline-block; margin-bottom: 6px; box-shadow: 0 2px 4px rgba(0,0,0,0.2);'>{type_icon} {g_data['group_name']} (ID: {g_data['group_id']}) | {icon} {g_data['role_name']} (Lv.{g_data['rank_num']})</span>"
 
 def format_df_string(g_data, group_type):
-    _, icon = get_rank_style(g_data['rank_num'])
+    # 【修改】：傳入 rank_num 與 role_name 以啟動軍階雙軌判定
+    _, icon = get_rank_style(g_data['rank_num'], g_data['role_name'])
     if group_type == "core":
         type_icon = "🏴"
     elif group_type == "ally":
