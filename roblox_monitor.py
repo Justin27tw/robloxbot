@@ -74,7 +74,6 @@ def resolve_user_input(user_input):
     return None, None
 
 def get_user_thumbnail(user_id):
-    """【防呆升級】獲取玩家大頭貼，確保絕對回傳有效的網址字串"""
     default_img = "https://tr.rbxcdn.com/38c6edcb50633730ff4cf39ac8859840/150/150/AvatarHeadshot/Png"
     url = f"https://thumbnails.roblox.com/v1/users/avatar-headshot?userIds={user_id}&size=150x150&format=Png&isCircular=true"
     
@@ -82,7 +81,6 @@ def get_user_thumbnail(user_id):
         res = requests.get(url, timeout=5).json()
         if res.get("data") and len(res["data"]) > 0:
             img_url = res["data"][0].get("imageUrl")
-            # 確保 img_url 不是 None 也不是空字串
             if img_url: 
                 return img_url
     except Exception:
@@ -141,7 +139,6 @@ def get_group_allies(group_id):
     return allies
 
 def get_user_friends(user_id):
-    """取得好友 (Roblox 官方上限為絕對的 200 人)"""
     url = f"https://friends.roblox.com/v1/users/{user_id}/friends"
     try:
         response = requests.get(url)
@@ -152,7 +149,6 @@ def get_user_friends(user_id):
         pass
     return []
 
-# --- 升級：支援無限抓取追蹤者 ---
 def get_user_followers(user_id, limit=None):
     followers = []
     cursor = ""
@@ -180,7 +176,6 @@ def get_user_followers(user_id, limit=None):
         return followers[:limit]
     return followers
 
-# --- 新增：支援無限抓取正在追蹤名單 (Followings) ---
 def get_user_followings(user_id, limit=None):
     followings = []
     cursor = ""
@@ -271,17 +266,31 @@ def get_rank_style(rank_num):
     else:
         return "#4682B4", "🔵" 
 
-def format_badge_html(g_data, is_core):
+def format_badge_html(g_data, group_type):
+    """【修改】：支援三種標籤 (core/ally/scanned_ally) 的圖示與顏色渲染"""
     bg_color, icon = get_rank_style(g_data['rank_num'])
-    type_icon = "🏴" if is_core else "⚠️"
-    return f"<span style='background-color: {bg_color}; color: white; padding: 4px 10px; border-radius: 6px; font-size: 13px; font-weight: 600; margin-right: 6px; display: inline-block; margin-bottom: 6px; box-shadow: 0 2px 4px rgba(0,0,0,0.2);'>{type_icon} {g_data['group_name']} | {icon} {g_data['role_name']} (Lv.{g_data['rank_num']})</span>"
+    
+    if group_type == "core":
+        type_icon = "🏴"
+    elif group_type == "ally":
+        type_icon = "⚠️"
+    else:
+        type_icon = "🎯" # A社群的附屬同盟
+        
+    return f"<span style='background-color: {bg_color}; color: white; padding: 4px 10px; border-radius: 6px; font-size: 13px; font-weight: 600; margin-right: 6px; display: inline-block; margin-bottom: 6px; box-shadow: 0 2px 4px rgba(0,0,0,0.2);'>{type_icon} {g_data['group_name']} (ID: {g_data['group_id']}) | {icon} {g_data['role_name']} (Lv.{g_data['rank_num']})</span>"
 
-def format_df_string(g_data, is_core):
+def format_df_string(g_data, group_type):
     _, icon = get_rank_style(g_data['rank_num'])
-    type_icon = "🏴" if is_core else "⚠️"
-    return f"{type_icon} {g_data['group_name']} - {icon} {g_data['role_name']} (Lv.{g_data['rank_num']})"
+    if group_type == "core":
+        type_icon = "🏴"
+    elif group_type == "ally":
+        type_icon = "⚠️"
+    else:
+        type_icon = "🎯"
+    return f"{type_icon} {g_data['group_name']} (ID: {g_data['group_id']}) - {icon} {g_data['role_name']} (Lv.{g_data['rank_num']})"
 
-def fetch_alert_data(user_id, user_name, relation_type, warning_group_ids):
+def fetch_alert_data(user_id, user_name, relation_type, warning_group_ids, scanned_group_id=None):
+    """【修改】：新增 scanned_group_id 參數，用來查詢 A社群(目標社群) 的同盟"""
     user_groups = get_user_groups(user_id)
     time.sleep(REQUEST_DELAY)
     
@@ -295,12 +304,15 @@ def fetch_alert_data(user_id, user_name, relation_type, warning_group_ids):
         "relation": relation_type,
         "avatar_url": get_user_thumbnail(user_id), 
         "core_groups": [],
-        "ally_groups": []
+        "ally_groups": [],
+        "scanned_ally_groups": [] # 儲存 A 社群同盟的資料
     }
     
+    # 1. 處理預警社群 (B社群) 及其附屬群組
     for gid in matched_ids:
         g_info = user_groups[gid]
         report["core_groups"].append({
+            "group_id": gid, 
             "group_name": get_short_name(g_info['name']),
             "role_name": g_info['role'],
             "rank_num": g_info['rank']
@@ -312,19 +324,32 @@ def fetch_alert_data(user_id, user_name, relation_type, warning_group_ids):
             for ally_id in matched_allies:
                 ally_info = user_groups[ally_id]
                 report["ally_groups"].append({
+                    "group_id": ally_id,
                     "group_name": get_short_name(ally_info['name']),
                     "role_name": ally_info['role'],
                     "rank_num": ally_info['rank']
                 })
                 
+    # 2. 處理正在被掃描的目標社群 (A社群) 的附屬群組
+    if scanned_group_id:
+        target_allies = get_group_allies(scanned_group_id)
+        if target_allies:
+            matched_target_allies = set(user_groups.keys()).intersection(set(target_allies.keys()))
+            for ally_id in matched_target_allies:
+                ally_info = user_groups[ally_id]
+                report["scanned_ally_groups"].append({
+                    "group_id": ally_id,
+                    "group_name": get_short_name(ally_info['name']),
+                    "role_name": ally_info['role'],
+                    "rank_num": ally_info['rank']
+                })
+
     return report
 
 def draw_alert_card(alert_data):
-    """【防呆升級】情報卡片設計，確保 st.image 絕對不會吃到 None"""
     with st.container(border=True):
         col1, col2 = st.columns([1, 6])
         with col1:
-            # 雙重防護：如果 avatar_url 意外變成 None，強制使用備用圖片
             safe_avatar = alert_data.get("avatar_url")
             if not safe_avatar:
                 safe_avatar = "https://tr.rbxcdn.com/38c6edcb50633730ff4cf39ac8859840/150/150/AvatarHeadshot/Png"
@@ -335,13 +360,18 @@ def draw_alert_card(alert_data):
             st.markdown(f"#### 🚨 {alert_data['user_name']} `(ID: {alert_data['user_id']})`")
             st.caption(f"身分關聯: **{alert_data['relation']}**")
             
-            # 套用動態顏色標籤
-            core_html = "".join([format_badge_html(g, True) for g in alert_data["core_groups"]])
+            # 渲染核心與附屬預警群組
+            core_html = "".join([format_badge_html(g, "core") for g in alert_data["core_groups"]])
             st.markdown(core_html, unsafe_allow_html=True)
             
-            if alert_data["ally_groups"]:
-                ally_html = "".join([format_badge_html(a, False) for a in alert_data["ally_groups"]])
+            if alert_data.get("ally_groups"):
+                ally_html = "".join([format_badge_html(a, "ally") for a in alert_data["ally_groups"]])
                 st.markdown(f"<div style='margin-top: 4px;'>{ally_html}</div>", unsafe_allow_html=True)
+                
+            # 【修改】：若有掃描出「A社群(目標社群)」的附屬同盟，額外顯示出來
+            if alert_data.get("scanned_ally_groups"):
+                scanned_ally_html = "".join([format_badge_html(a, "scanned_ally") for a in alert_data["scanned_ally_groups"]])
+                st.markdown(f"<div style='margin-top: 6px;'><span style='color: #888; font-size: 13px; font-weight: bold;'>🎯 該成員亦潛伏於「目標掃描社群」的同盟：</span><br>{scanned_ally_html}</div>", unsafe_allow_html=True)
 
 def draw_summary_dashboard(alerted_list, total_scanned, title="掃描總結"):
     st.divider()
@@ -368,8 +398,10 @@ def draw_summary_dashboard(alerted_list, total_scanned, title="掃描總結"):
             "頭像": m["avatar_url"],
             "Roblox 名稱": m["user_name"],
             "身分 / 關聯": m["relation"],
-            "核心預警 (階級)": "\n".join([format_df_string(g, True) for g in m["core_groups"]]),
-            "附屬群組 (階級)": "\n".join([format_df_string(a, False) for a in m["ally_groups"]]) if m["ally_groups"] else "無",
+            "預警社群 (核心)": "\n".join([format_df_string(g, "core") for g in m["core_groups"]]),
+            "預警附屬群組 (階級)": "\n".join([format_df_string(a, "ally") for a in m["ally_groups"]]) if m.get("ally_groups") else "無",
+            # 【修改】：新增這一個欄位至表格中
+            "目標社群附屬 (階級)": "\n".join([format_df_string(a, "scanned_ally") for a in m.get("scanned_ally_groups", [])]) if m.get("scanned_ally_groups") else "無",
             "玩家 ID": str(m["user_id"])
         })
         
@@ -404,7 +436,6 @@ else:
             user_input = st.text_input("請輸入目標玩家名稱或 User ID：", placeholder="例如: builderman 或 156", key="input_player")
         with col2:
             st.markdown("<br>", unsafe_allow_html=True)
-            # --- 新增：深度掃描全域開關 ---
             scan_all_social = st.checkbox("⚠️ 解除人數限制 (全數掃描追蹤名單)", help="打勾後將無視 100 人上限，將名單徹底翻找完畢。如果目標有數十萬粉絲，可能耗時極長。")
             social_limit = None if scan_all_social else 100
 
@@ -431,11 +462,11 @@ else:
                             st.info("✅ 目標本體安全，未檢測到危險社群足跡。")
 
                     st.markdown("#### 👥 [階段二] 社交圈 (好友) 檢查")
-                    friends = get_user_friends(target_user_id) # 官方規定好友最多必定為 200 人
+                    friends = get_user_friends(target_user_id) 
                     if not friends:
                         st.info("目標無公開好友資料。")
                     else:
-                        st.write(f"取得 {len(friends)} 名聯繫人 (已達 Roblox 官方最大好友上限)，開始比對...")
+                        st.write(f"取得 {len(friends)} 名聯繫人，開始比對...")
                         friend_bar = st.progress(0)
                         friend_status = st.empty()
                         alerted_friends = [] 
@@ -458,7 +489,6 @@ else:
                         friend_status.text("✔️ 好友圈檢查完畢！")
                         draw_summary_dashboard(alerted_friends, len(friends), "好友圈掃描")
 
-                    # --- 新增階段：關注中 (Followings) 檢查 ---
                     st.markdown("#### 👁️‍🗨️ [階段三] 目標關注名單 (Followings) 檢查")
                     followings = get_user_followings(target_user_id, limit=social_limit)
                     if not followings:
@@ -584,7 +614,9 @@ else:
                             member_status.text(f"檢查中 {index + 1}/{len(members)}: {member['name']} (Lv.{member['rank_num']}) ⏳ 預估剩餘: {m}分{s}秒")
                             
                             relation_str = f"群組成員 [Rank: {member['rank_name']}]"
-                            alert_data = fetch_alert_data(member["id"], member["name"], relation_str, WARNING_GROUP_IDS)
+                            
+                            # 【核心修改】：在這裡將正在掃描的 target_group_id 傳入函數，啟動 A社群 的同盟追蹤！
+                            alert_data = fetch_alert_data(member["id"], member["name"], relation_str, WARNING_GROUP_IDS, int(target_group_id))
                             
                             if alert_data:
                                 draw_alert_card(alert_data)
