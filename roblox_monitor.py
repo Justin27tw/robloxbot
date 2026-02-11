@@ -74,14 +74,21 @@ def resolve_user_input(user_input):
     return None, None
 
 def get_user_thumbnail(user_id):
+    """【防呆升級】獲取玩家大頭貼，確保絕對回傳有效的網址字串"""
+    default_img = "https://tr.rbxcdn.com/38c6edcb50633730ff4cf39ac8859840/150/150/AvatarHeadshot/Png"
     url = f"https://thumbnails.roblox.com/v1/users/avatar-headshot?userIds={user_id}&size=150x150&format=Png&isCircular=true"
+    
     try:
-        res = requests.get(url).json()
-        if res.get("data"):
-            return res["data"][0]["imageUrl"]
-    except:
+        res = requests.get(url, timeout=5).json()
+        if res.get("data") and len(res["data"]) > 0:
+            img_url = res["data"][0].get("imageUrl")
+            # 確保 img_url 不是 None 也不是空字串
+            if img_url: 
+                return img_url
+    except Exception:
         pass
-    return "https://tr.rbxcdn.com/38c6edcb50633730ff4cf39ac8859840/150/150/AvatarHeadshot/Png"
+        
+    return default_img
 
 def get_user_groups(user_id):
     url = f"https://groups.roblox.com/v1/users/{user_id}/groups/roles"
@@ -313,14 +320,22 @@ def fetch_alert_data(user_id, user_name, relation_type, warning_group_ids):
     return report
 
 def draw_alert_card(alert_data):
+    """【防呆升級】情報卡片設計，確保 st.image 絕對不會吃到 None"""
     with st.container(border=True):
         col1, col2 = st.columns([1, 6])
         with col1:
-            st.image(alert_data["avatar_url"], use_container_width=True)
+            # 雙重防護：如果 avatar_url 意外變成 None，強制使用備用圖片
+            safe_avatar = alert_data.get("avatar_url")
+            if not safe_avatar:
+                safe_avatar = "https://tr.rbxcdn.com/38c6edcb50633730ff4cf39ac8859840/150/150/AvatarHeadshot/Png"
+                
+            st.image(safe_avatar, use_container_width=True)
+            
         with col2:
             st.markdown(f"#### 🚨 {alert_data['user_name']} `(ID: {alert_data['user_id']})`")
             st.caption(f"身分關聯: **{alert_data['relation']}**")
             
+            # 套用動態顏色標籤
             core_html = "".join([format_badge_html(g, True) for g in alert_data["core_groups"]])
             st.markdown(core_html, unsafe_allow_html=True)
             
