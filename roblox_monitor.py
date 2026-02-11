@@ -1,13 +1,14 @@
 import streamlit as st
 import requests
 import time
-import pandas as pd # 新增：用來製作精美的排版表格
+import pandas as pd
+import re # 新增：用來自動擷取社群簡稱
 
 # ================= 配置區 =================
 REQUEST_DELAY = 0.5  
 # ==========================================
 
-# 網頁基礎設定 (改為 wide 寬螢幕模式，讓表格更好看)
+# 網頁基礎設定 (寬螢幕模式，讓表格更好看)
 st.set_page_config(page_title="Roblox 社群預警比對系統", page_icon="🚨", layout="wide")
 
 # ================= 暫存狀態初始化 =================
@@ -32,6 +33,13 @@ st.sidebar.divider()
 st.sidebar.write(f"目前已載入 **{len(WARNING_GROUP_IDS)}** 個預警社群。")
 
 # === API 抓取功能區 ===
+
+def get_short_name(full_name):
+    """【新增】自動擷取中括號內的字作為簡稱，例如 '[ROCA] 陸軍' 會變成 'ROCA'"""
+    match = re.search(r'\[(.*?)\]', full_name)
+    if match:
+        return match.group(1) # 成功抓取括號內的文字
+    return full_name # 如果沒有括號，回傳完整名稱
 
 def resolve_user_input(user_input):
     user_input = str(user_input).strip()
@@ -188,7 +196,6 @@ def get_members_of_roles(group_id, selected_roles):
 # === UI 排版與資料處理函數 ===
 
 def fetch_alert_data(user_id, user_name, relation_type, warning_group_ids):
-    """資料層：檢查並回傳結構化的預警資料字典，不再回傳字串"""
     user_groups = get_user_groups(user_id)
     time.sleep(REQUEST_DELAY)
     
@@ -206,19 +213,24 @@ def fetch_alert_data(user_id, user_name, relation_type, warning_group_ids):
     
     for gid in matched_ids:
         g_info = user_groups[gid]
-        report["core_groups"].append(f"[{gid}] {g_info['name']} (職階: {g_info['role']})")
+        
+        # 【套用簡稱提煉】
+        short_name = get_short_name(g_info['name'])
+        report["core_groups"].append(f"🏴 {short_name} (職階: {g_info['role']})")
         
         allies = get_group_allies(gid)
         if allies:
             matched_allies = set(user_groups.keys()).intersection(set(allies.keys()))
             for ally_id in matched_allies:
                 ally_info = user_groups[ally_id]
-                report["ally_groups"].append(f"[{ally_id}] {ally_info['name']} (職階: {ally_info['role']})")
+                
+                # 【套用簡稱提煉】
+                ally_short = get_short_name(ally_info['name'])
+                report["ally_groups"].append(f"⚠️ {ally_short} (職階: {ally_info['role']})")
                 
     return report
 
 def draw_alert_card(alert_data):
-    """介面層：畫出單筆預警的摺疊面板"""
     with st.expander(f"🚨 [發現目標] {alert_data['relation']} : {alert_data['user_name']} (ID: {alert_data['user_id']})", expanded=False):
         st.markdown("**🏴 核心預警社群：**")
         for g in alert_data["core_groups"]:
@@ -230,22 +242,19 @@ def draw_alert_card(alert_data):
                 st.markdown(f"- {a}")
 
 def draw_summary_table(alerted_list, title="掃描統計結果"):
-    """介面層：將收集到的所有預警名單畫成一張精美的 DataFrame 表格"""
     st.error(f"⚠️ **{title}**：本次掃描中，共抓出 **{len(alerted_list)}** 名人員！")
     
-    # 將資料轉換為 Pandas 格式以便排版
     df_data = []
     for m in alerted_list:
         df_data.append({
             "身分 / 關聯": m["relation"],
             "Roblox 名稱": m["user_name"],
-            "玩家 ID": str(m["user_id"]),
             "加入的預警社群 (核心)": "\n".join(m["core_groups"]),
-            "加入的附屬群組 (同盟)": "\n".join(m["ally_groups"]) if m["ally_groups"] else "無"
+            "加入的附屬群組 (同盟)": "\n".join(m["ally_groups"]) if m["ally_groups"] else "無",
+            "玩家 ID": str(m["user_id"])
         })
         
     df = pd.DataFrame(df_data)
-    # 使用 streamlit dataframe，設定寬度自動展開
     st.dataframe(df, use_container_width=True)
 
 
@@ -421,7 +430,6 @@ else:
                             
                             relation_str = f"社群成員 [Rank: {member['rank_name']}]"
                             
-                            # 獲取結構化的資料
                             alert_data = fetch_alert_data(member["id"], member["name"], relation_str, WARNING_GROUP_IDS)
                             
                             if alert_data:
