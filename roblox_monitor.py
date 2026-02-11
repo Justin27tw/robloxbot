@@ -13,10 +13,8 @@ st.set_page_config(page_title="Roblox 社群預警比對系統", page_icon="🚨
 # ================= 側邊欄：預警名單設定 =================
 st.sidebar.header("⚙️ 預警名單設定")
 st.sidebar.write("請輸入要監控的黑名單社群 ID（若有多個請用半形逗號 `,` 分隔）：")
-# 預設值保留你原本的兩個營區 ID 方便測試
 warning_input = st.sidebar.text_area("黑名單社群 IDs", value="11826423, 36093699", height=100)
 
-# 解析使用者輸入，轉換成數字集合 (Set)
 WARNING_GROUP_IDS = set()
 if warning_input:
     for gid in warning_input.split(','):
@@ -31,10 +29,7 @@ st.sidebar.write(f"目前已載入 **{len(WARNING_GROUP_IDS)}** 個預警社群�
 # === API 抓取功能區 ===
 
 def resolve_user_input(user_input):
-    """智慧解析使用者的輸入 (支援 Username 或 User ID)"""
     user_input = str(user_input).strip()
-    
-    # 步驟 1：先嘗試將輸入當作「玩家名稱 (Username)」來查詢
     url_username_to_id = "https://users.roblox.com/v1/usernames/users"
     payload = {"usernames": [user_input], "excludeBannedUsers": False}
     try:
@@ -46,7 +41,6 @@ def resolve_user_input(user_input):
     except Exception:
         pass 
 
-    # 步驟 2：如果名稱查不到，檢查輸入是不是「純數字 (User ID)」
     if user_input.isdigit():
         url_verify_id = f"https://users.roblox.com/v1/users/{user_input}"
         try:
@@ -56,11 +50,9 @@ def resolve_user_input(user_input):
                 return str(user_data["id"]), user_data["name"]
         except Exception:
             pass
-            
     return None, None
 
 def get_user_groups(user_id):
-    """取得指定玩家加入的所有社群"""
     url = f"https://groups.roblox.com/v1/users/{user_id}/groups/roles"
     try:
         response = requests.get(url)
@@ -75,7 +67,6 @@ def get_user_groups(user_id):
     return {}
 
 def get_user_friends(user_id):
-    """取得指定玩家的好友名單"""
     url = f"https://friends.roblox.com/v1/users/{user_id}/friends"
     try:
         response = requests.get(url)
@@ -87,7 +78,6 @@ def get_user_friends(user_id):
     return []
 
 def get_user_followers(user_id, limit=100):
-    """取得指定玩家的追蹤者名單"""
     followers = []
     cursor = ""
     while cursor is not None and len(followers) < limit:
@@ -107,7 +97,6 @@ def get_user_followers(user_id, limit=100):
     return followers[:limit]
 
 def get_group_info(group_id):
-    """取得特定社群的基本資訊"""
     url = f"https://groups.roblox.com/v1/groups/{group_id}"
     try:
         response = requests.get(url)
@@ -120,11 +109,19 @@ def get_group_info(group_id):
         pass
     return None
 
-def get_recent_group_members(group_id, limit=100):
-    """取得社群最新加入的成員名單"""
+# --- 修改：支援抓取 Rank 以及解除人數上限 ---
+def get_group_members(group_id, limit=None):
+    """
+    取得社群成員名單。
+    若 limit 為 None，則會不斷翻頁直到抓完社群「所有人」。
+    """
     members = []
     cursor = ""
-    while cursor is not None and len(members) < limit:
+    while cursor is not None:
+        # 如果有設定上限，且已經抓夠了，就提早結束
+        if limit is not None and len(members) >= limit:
+            break
+            
         url = f"https://groups.roblox.com/v1/groups/{group_id}/users?sortOrder=Desc&limit=100"
         if cursor:
             url += f"&cursor={cursor}"
@@ -135,20 +132,28 @@ def get_recent_group_members(group_id, limit=100):
                 data = response.json()
                 for item in data.get("data", []):
                     user = item.get("user", {})
-                    members.append({"id": user.get("userId"), "name": user.get("username")})
+                    role = item.get("role", {}) # 取得該玩家在此社群的職階資訊
+                    
+                    members.append({
+                        "id": user.get("userId"), 
+                        "name": user.get("username"),
+                        "rank_name": role.get("name", "未知職階") # 儲存 Rank Name
+                    })
                 cursor = data.get("nextPageCursor")
                 time.sleep(REQUEST_DELAY)
             elif response.status_code == 429:
-                time.sleep(5)
+                time.sleep(5) # 遇到限制強制休息
             else:
                 break
         except Exception:
             break
-    return members[:limit]
+            
+    if limit is not None:
+        return members[:limit]
+    return members
+# -----------------------------------------------
 
-# --- 修改：將 warning_group_ids 變成參數傳入 ---
 def check_and_alert(user_id, user_name, relation_type, warning_group_ids):
-    """核心比對邏輯：檢查該玩家的社群並回傳預警訊息"""
     groups = get_user_groups(user_id)
     time.sleep(REQUEST_DELAY)
     matched_ids = set(groups.keys()).intersection(warning_group_ids)
@@ -164,11 +169,9 @@ def check_and_alert(user_id, user_name, relation_type, warning_group_ids):
 st.title("🚨 Roblox 社群交叉比對與預警系統")
 st.write("透過輸入玩家或社群的資料，自動比對是否與指定的「黑名單社群」有重疊。")
 
-# 如果沒有設定預警名單，顯示警告
 if not WARNING_GROUP_IDS:
     st.error("👈 系統尚未準備就緒：請先在左側邊欄設定至少一個有效的「黑名單社群 ID」！")
 else:
-    # 建立兩個標籤頁 (Tabs)
     tab1, tab2 = st.tabs(["👤 玩家與關聯掃描", "🛡️ 特定社群內部掃描"])
 
     # ================= TAB 1: 玩家掃描 =================
@@ -258,12 +261,18 @@ else:
     # ================= TAB 2: 特定社群掃描 =================
     with tab2:
         st.subheader("搜尋特定社群內是否有「預警名單」成員")
-        st.write("輸入指定的社群 ID，系統將抓取該社群內的最新成員，並交叉比對他們是否同時加入了預警社群。")
-        
         target_group_id = st.text_input("請輸入要掃描的目標社群 ID (Group ID)：", placeholder="例如: 1234567", key="input_group")
         
-        # 加入一個滑桿，限制掃描人數，防止 API 呼叫過載
-        scan_limit = st.slider("選擇要掃描的成員數量 (從最新加入的成員開始排查)", min_value=10, max_value=200, value=50, step=10, key="slider_limit")
+        # --- 新增：無限掃描模式開關 ---
+        st.markdown("#### ⚙️ 掃描範圍設定")
+        scan_all = st.checkbox("⚠️ 掃描該社群【所有】成員 (忽略人數上限，破萬人社群將耗時極長)")
+        
+        if not scan_all:
+            scan_limit = st.slider("選擇要掃描的成員數量 (從最新加入的成員開始排查)", min_value=10, max_value=1000, value=50, step=10, key="slider_limit")
+        else:
+            scan_limit = None # 代表不設限
+            st.info("💡 已開啟無限掃描模式：將依序抓取整個社群的名單。請確保網頁保持開啟。")
+        # -------------------------------
         
         if st.button("開始掃描社群", type="primary", key="btn_group"):
             if not target_group_id.isdigit():
@@ -275,16 +284,18 @@ else:
                 if not group_info:
                     st.error("❌ 找不到該社群，請確認 ID 是否正確或該社群是否被封鎖。")
                 else:
-                    st.success(f"✅ 成功找到社群：**{group_info.get('name')}** (總人數: {group_info.get('memberCount')} 人)")
+                    total_members_in_group = group_info.get('memberCount')
+                    st.success(f"✅ 成功找到社群：**{group_info.get('name')}** (總人數: {total_members_in_group} 人)")
                     st.divider()
                     
-                    with st.spinner(f"正在獲取最新 {scan_limit} 位成員名單..."):
-                        members = get_recent_group_members(target_group_id, limit=scan_limit)
+                    with st.spinner("正在擷取社群成員名單，請稍候..."):
+                        # 呼叫更新後的函數
+                        members = get_group_members(target_group_id, limit=scan_limit)
                     
                     if not members:
                         st.info("該社群目前沒有成員，或權限不足無法讀取。")
                     else:
-                        st.write(f"共擷取到 {len(members)} 位成員，開始逐一比對社群交集...")
+                        st.write(f"成功擷取到 **{len(members)}** 位成員，開始逐一比對社群交集...")
                         member_bar = st.progress(0)
                         member_status = st.empty()
                         
@@ -292,18 +303,22 @@ else:
                         
                         for index, member in enumerate(members):
                             member_bar.progress((index + 1) / len(members))
-                            member_status.text(f"正在檢查成員 {index + 1}/{len(members)}: {member['name']}")
+                            member_status.text(f"正在檢查成員 {index + 1}/{len(members)}: {member['name']} (職階: {member['rank_name']})")
                             
-                            alert = check_and_alert(member["id"], member["name"], "社群成員", WARNING_GROUP_IDS)
+                            # --- 修改：將 Rank 名稱傳遞給警報訊息 ---
+                            relation_str = f"社群成員 [職階: {member['rank_name']}]"
+                            alert = check_and_alert(member["id"], member["name"], relation_str, WARNING_GROUP_IDS)
+                            
                             if alert:
                                 st.error(alert)
-                                alerted_members.append(member['name'])
+                                # 儲存時一併記錄職階
+                                alerted_members.append(f"{member['name']} (職階: {member['rank_name']})")
                                 
                         member_status.text("✔️ 特定社群成員掃描完畢！")
                         
                         if not alerted_members:
                             st.info("✅ 掃描的成員中，皆未加入任何預警社群。")
                         else:
-                            st.warning(f"⚠️ **統計結果**：在這次掃描中，共有 **{len(alerted_members)}** 位成員在預警名單內！\n\n**抓到的名單**：{', '.join(alerted_members)}")
+                            st.warning(f"⚠️ **統計結果**：在這次掃描中，共有 **{len(alerted_members)}** 位成員在預警名單內！\n\n**抓到的名單**：\n" + "\n".join([f"- {m}" for m in alerted_members]))
                     
                     st.balloons()
