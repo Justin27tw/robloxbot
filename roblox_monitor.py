@@ -44,7 +44,6 @@ with st.sidebar:
 # === API 抓取功能區 ===
 
 def get_short_name(full_name):
-    """自動擷取中括號內的字作為簡稱"""
     match = re.search(r'\[(.*?)\]', full_name)
     if match:
         return match.group(1)
@@ -75,7 +74,6 @@ def resolve_user_input(user_input):
     return None, None
 
 def get_user_thumbnail(user_id):
-    """【防呆升級】獲取玩家大頭貼，確保絕對回傳有效的網址字串"""
     default_img = "https://tr.rbxcdn.com/38c6edcb50633730ff4cf39ac8859840/150/150/AvatarHeadshot/Png"
     url = f"https://thumbnails.roblox.com/v1/users/avatar-headshot?userIds={user_id}&size=150x150&format=Png&isCircular=true"
     
@@ -87,7 +85,6 @@ def get_user_thumbnail(user_id):
                 return img_url
     except Exception:
         pass
-        
     return default_img
 
 def get_user_groups(user_id):
@@ -259,19 +256,25 @@ def get_members_of_roles(group_id, selected_roles):
 # === UI 排版與視覺化資料處理函數 ===
 
 def get_rank_style(rank_num):
-    """【動態視覺核心】依照 Rank 數值嚴格給予對應的警告色與圖示"""
+    """【純數值漸進色階】完全依照 LV 大小賦予 7 段顏色，拒絕客製化猜測"""
+    rank_num = int(rank_num)
     if rank_num == 255:
-        return "#8B0000", "👑" 
+        return "#8B0000", "👑"  # 深紅 (Lv. 255)
     elif rank_num >= 200:
-        return "#FF4B4B", "🔴" 
+        return "#FF4B4B", "🔴"  # 紅色 (Lv. 200~254)
+    elif rank_num >= 150:
+        return "#FF8C00", "🟠"  # 橘色 (Lv. 150~199)
     elif rank_num >= 100:
-        return "#FF8C00", "🟠" 
+        return "#DAA520", "🟡"  # 金黃 (Lv. 100~149)
+    elif rank_num >= 50:
+        return "#8A2BE2", "🟣"  # 紫色 (Lv. 50~99)
+    elif rank_num >= 10:
+        return "#4682B4", "🔵"  # 藍色 (Lv. 10~49)
     else:
-        return "#4682B4", "🔵" 
+        return "#2E8B57", "🟢"  # 綠色 (Lv. 1~9)
 
 def format_badge_html(g_data, group_type):
-    """支援三種標籤，且每一張標籤都會重新呼叫 get_rank_style 取得屬於該群組的獨立顏色"""
-    bg_color, icon = get_rank_style(g_data['rank_num']) # 👈 這裡保證了所有群組都會套用專屬顏色
+    bg_color, icon = get_rank_style(g_data['rank_num']) 
     
     if group_type == "core":
         type_icon = "🏴"
@@ -283,7 +286,6 @@ def format_badge_html(g_data, group_type):
     return f"<span style='background-color: {bg_color}; color: white; padding: 4px 10px; border-radius: 6px; font-size: 13px; font-weight: 600; margin-right: 6px; display: inline-block; margin-bottom: 6px; box-shadow: 0 2px 4px rgba(0,0,0,0.2);'>{type_icon} {g_data['group_name']} (ID: {g_data['group_id']}) | {icon} {g_data['role_name']} (Lv.{g_data['rank_num']})</span>"
 
 def format_df_string(g_data, group_type):
-    """表格中的純文字輸出，同樣會套用高低階級的獨立圖示"""
     _, icon = get_rank_style(g_data['rank_num'])
     if group_type == "core":
         type_icon = "🏴"
@@ -311,7 +313,6 @@ def fetch_alert_data(user_id, user_name, relation_type, warning_group_ids, scann
         "scanned_ally_groups": []
     }
     
-    # 1. 處理預警社群 (B社群) 及其附屬群組
     for gid in matched_ids:
         g_info = user_groups[gid]
         report["core_groups"].append({
@@ -330,10 +331,9 @@ def fetch_alert_data(user_id, user_name, relation_type, warning_group_ids, scann
                     "group_id": ally_id,
                     "group_name": get_short_name(ally_info['name']),
                     "role_name": ally_info['role'],
-                    "rank_num": ally_info['rank'] # 👈 即便是相關同盟，我們也精準抓出了他的 Rank 數值
+                    "rank_num": ally_info['rank']
                 })
                 
-    # 2. 處理正在被掃描的目標社群 (A社群) 的附屬群組
     if scanned_group_id:
         target_allies = get_group_allies(scanned_group_id)
         if target_allies:
@@ -344,7 +344,7 @@ def fetch_alert_data(user_id, user_name, relation_type, warning_group_ids, scann
                     "group_id": ally_id,
                     "group_name": get_short_name(ally_info['name']),
                     "role_name": ally_info['role'],
-                    "rank_num": ally_info['rank'] # 👈 A 社群附屬群組的 Rank 數值也同樣抓出來了
+                    "rank_num": ally_info['rank']
                 })
 
     return report
@@ -363,7 +363,6 @@ def draw_alert_card(alert_data):
             st.markdown(f"#### 🚨 {alert_data['user_name']} `(ID: {alert_data['user_id']})`")
             st.caption(f"身分關聯: **{alert_data['relation']}**")
             
-            # 【視覺化核心輸出點】：每一種群組的徽章都會根據自己傳入的 rank_num 自動變色
             core_html = "".join([format_badge_html(g, "core") for g in alert_data["core_groups"]])
             st.markdown(core_html, unsafe_allow_html=True)
             
@@ -615,7 +614,6 @@ else:
                             member_status.text(f"檢查中 {index + 1}/{len(members)}: {member['name']} (Lv.{member['rank_num']}) ⏳ 預估剩餘: {m}分{s}秒")
                             
                             relation_str = f"群組成員 [Rank: {member['rank_name']}]"
-                            
                             alert_data = fetch_alert_data(member["id"], member["name"], relation_str, WARNING_GROUP_IDS, int(target_group_id))
                             
                             if alert_data:
