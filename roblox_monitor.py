@@ -279,7 +279,57 @@ def draw_alert_card(alert_data):
                     ally_html = "".join([format_badge_html(a, "ally") for a in alert_data["ally_groups"]])
                     st.markdown(f"<div style='margin-top: 4px;'>{ally_html}</div>", unsafe_allow_html=True)
 
+# ================= 修正版：統整表格優化 (強化階層辨識) =================
 def draw_summary_dashboard(alerted_list, total_scanned, title="掃描總結"):
+    st.divider()
+    st.markdown(f"### 📊 {title} 報告")
+    
+    col1, col2, col3 = st.columns(3)
+    col1.metric("🔍 總掃描人數", f"{total_scanned} 人")
+    flagged_count = len(alerted_list)
+    safe_ratio = ((total_scanned - flagged_count) / total_scanned * 100) if total_scanned > 0 else 0
+    col2.metric("🚨 觸發預警人數", f"{flagged_count} 人", delta=f"-{flagged_count} 威脅", delta_color="inverse")
+    col3.metric("🛡️ 安全比例", f"{safe_ratio:.1f} %")
+
+    if flagged_count > 0:
+        st.markdown("##### 📌 威脅細節清單 (依預警社群分組)")
+        df_data = []
+        for m in alerted_list:
+            # 建立整合後的「預警路徑」字串
+            warning_path = []
+            if "grouped_matches" in m:
+                for cluster in m["grouped_matches"]:
+                    # 核心群組 [🏴]
+                    warning_path.append(format_df_string(cluster["core"], "core"))
+                    # 該核心下的同盟 [⚠️]
+                    for ally in cluster["allies"]:
+                        warning_path.append(f"   └─ {format_df_string(ally, 'ally')}")
+            
+            # 目標 A 的同盟資訊
+            a_ally_info = "無"
+            if m.get("scanned_ally_groups"):
+                a_ally_info = "\n".join([format_df_string(a, "scanned_ally") for a in m["scanned_ally_groups"]])
+
+            df_data.append({
+                "大頭貼": m["avatar_url"],
+                "玩家名稱 (ID)": f"{m['user_name']}\n({m['user_id']})",
+                "身分/關聯": m["relation"],
+                "命中預警細節 (核心 ➔ 附屬)": "\n".join(warning_path) if warning_path else "無",
+                "掃描目標(A)之同盟": a_ally_info
+            })
+        
+        # 使用 Streamlit DataFrame 呈現
+        st.dataframe(
+            pd.DataFrame(df_data),
+            column_config={
+                "大頭貼": st.column_config.ImageColumn("大頭貼"),
+                "玩家名稱 (ID)": st.column_config.TextColumn("玩家資訊", width="medium"),
+                "命中預警細節 (核心 ➔ 附屬)": st.column_config.TextColumn("預警路徑", width="large"),
+                "掃描目標(A)之同盟": st.column_config.TextColumn("相關同盟", width="medium")
+            },
+            hide_index=True,
+            use_container_width=True
+        )
     st.divider()
     st.markdown(f"### 📊 {title} 報告")
     col1, col2, col3 = st.columns(3)
