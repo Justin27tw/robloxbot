@@ -303,7 +303,7 @@ st.title("👁️‍🗨️ Roblox 深度情報交叉比對系統")
 if not WARNING_GROUP_IDS:
     st.error("👈 請先在左側邊欄輸入有效的「高風險社群 ID」！")
 else:
-    tab1, tab2 = st.tabs(["👤 單一目標深度掃描", "🛡️ 群組大範圍降維掃描"])
+    tab1, tab2,tab3= st.tabs(["👤 單一目標深度掃描", "🛡️ 群組大範圍降維掃描","🔍 玩家帳號查詢"])
 
     with tab1:
         st.subheader("針對單一目標及其社交圈進行掃描")
@@ -441,3 +441,66 @@ else:
                             if a: draw_alert_card(a); alerted_m.append(a)
                         draw_summary_dashboard(alerted_m, len(mems), "群組深度排查")
                         st.balloons()
+    # ================= Tab 3: 玩家個資深度查詢 =================
+    with tab3:
+        st.subheader("👤 玩家帳號資訊深度查詢")
+        q_col1, q_col2 = st.columns([2, 1])
+        with q_col1:
+            query_input = st.text_input("輸入要查詢的玩家名稱或 ID：", key="query_user_input")
+        
+        if st.button("執行個資查詢", type="primary", key="btn_query"):
+            if not query_input:
+                st.error("❌ 請輸入玩家名稱或 ID")
+            else:
+                with st.spinner("正在檢索資料..."):
+                    target_uid, target_uname = resolve_user_input(query_input)
+                    if not target_uid:
+                        st.error("❌ 無法找到該玩家。")
+                    else:
+                        # 抓取額外詳細資訊
+                        user_detail_url = f"https://users.roblox.com/v1/users/{target_uid}"
+                        friends_count_url = f"https://friends.roblox.com/v1/users/{target_uid}/friends/count"
+                        
+                        try:
+                            detail_res = requests.get(user_detail_url).json()
+                            friend_count = requests.get(friends_count_url).json().get("count", "未知")
+                            avatar_url = get_user_thumbnail(target_uid)
+                            
+                            st.divider()
+                            info_c1, info_c2 = st.columns([1, 2])
+                            
+                            with info_c1:
+                                st.image(avatar_url, caption=f"ID: {target_uid}", use_container_width=True)
+                            
+                            with info_c2:
+                                st.markdown(f"### {detail_res.get('displayName')} (@{detail_res.get('name')})")
+                                
+                                # 帳號基本資料表
+                                metrics_c1, metrics_c2, metrics_c3 = st.columns(3)
+                                metrics_c1.metric("好友數量", f"{friend_count} 人")
+                                
+                                # 處理日期格式
+                                raw_date = detail_res.get('created', "")
+                                join_date = raw_date.split("T")[0] if "T" in raw_date else "未知"
+                                metrics_c2.metric("加入日期", join_date)
+                                
+                                # 帳號狀態
+                                is_banned = "🔴 已封鎖" if detail_res.get('isBanned') else "🟢 正常"
+                                metrics_c3.metric("帳號狀態", is_banned)
+                                
+                                st.markdown("---")
+                                st.markdown(f"**個人簡介：**\n\n{detail_res.get('description') or '（此玩家沒有填寫簡介）'}")
+                                
+                                # 顯示該玩家目前加入的社群總覽
+                                st.markdown("**目前加入的群組總覽：**")
+                                groups = get_user_groups(target_uid)
+                                if groups:
+                                    group_tags = ""
+                                    for gid, ginfo in groups.items():
+                                        group_tags += f"`{ginfo['name']}` "
+                                    st.write(group_tags)
+                                else:
+                                    st.write("未加入任何公開群組。")
+                                    
+                        except Exception as e:
+                            st.error(f"查詢過程中發生錯誤: {e}")
