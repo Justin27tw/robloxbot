@@ -488,19 +488,44 @@ else:
                                 is_banned = "🔴 已封鎖" if detail_res.get('isBanned') else "🟢 正常"
                                 metrics_c3.metric("帳號狀態", is_banned)
                                 
-                                st.markdown("---")
-                                st.markdown(f"**個人簡介：**\n\n{detail_res.get('description') or '（此玩家沒有填寫簡介）'}")
-                                
                                 # 顯示該玩家目前加入的社群總覽
-                                st.markdown("**目前加入的群組總覽：**")
+                                st.markdown("---")
+                                st.markdown("#### 🚩 目前加入的群組總覽")
                                 groups = get_user_groups(target_uid)
                                 if groups:
-                                    group_tags = ""
-                                    for gid, ginfo in groups.items():
-                                        group_tags += f"`{ginfo['name']}` "
-                                    st.write(group_tags)
+                                    # 使用容器包裹標籤，避免撐開頁面
+                                    group_container = st.container()
+                                    with group_container:
+                                        # 建立美化的 HTML 標籤雲
+                                        html_content = "<div style='display: flex; flex-wrap: wrap; gap: 8px;'>"
+                                        for gid, ginfo in groups.items():
+                                            # 根據 Rank 決定標籤顏色 (延用系統色系)
+                                            bg_color, _ = get_rank_style(ginfo['rank'], ginfo['role'])
+                                            
+                                            # 組合成帶有連結與樣式的標籤
+                                            html_content += f"""
+                                                <a href="https://www.roblox.com/groups/{gid}" target="_blank" style="text-decoration: none;">
+                                                    <div style="
+                                                        background-color: {bg_color}; 
+                                                        color: white; 
+                                                        padding: 4px 12px; 
+                                                        border-radius: 15px; 
+                                                        font-size: 12px; 
+                                                        font-weight: 500;
+                                                        box-shadow: 1px 1px 3px rgba(0,0,0,0.2);
+                                                        transition: transform 0.2s;
+                                                        cursor: pointer;
+                                                    ">
+                                                        {ginfo['name']} <span style="opacity: 0.8; font-size: 10px;">| {ginfo['role']}</span>
+                                                    </div>
+                                                </a>
+                                            """
+                                        html_content += "</div>"
+                                        st.markdown(html_content, unsafe_allow_html=True)
+                                    
+                                    st.caption(f"💡 共計加入 {len(groups)} 個群組。點擊標籤可跳轉至該群組頁面。")
                                 else:
-                                    st.write("未加入任何公開群組。")
+                                    st.info("ℹ️ 此玩家目前未加入任何公開群組。")
                                     
                         except Exception as e:
                             st.error(f"查詢過程中發生錯誤: {e}")
