@@ -245,7 +245,34 @@ def fetch_alert_data(user_id, user_name, relation_type, warning_group_ids, scann
     return report
 
 # ================= 核心顯示函式 (唯一且修正 HTML 格式) =================
+# ================= 核心顯示函式 (修正變數命名錯誤) =================
 def draw_alert_card(alert_data):
+    with st.container(border=True):
+        col1, col2 = st.columns([1, 6])
+        with col1:
+            safe_avatar = alert_data.get("avatar_url") or "https://tr.rbxcdn.com/38c6edcb50633730ff4cf39ac8859840/150/150/AvatarHeadshot/Png"
+            st.image(safe_avatar, use_container_width=True)
+        with col2:
+            st.markdown(f"#### 🚨 {alert_data['user_name']} `(ID: {alert_data['user_id']})`")
+            st.caption(f"身分關聯: **{alert_data['relation']}**")
+            
+            if alert_data.get("scanned_ally_groups"):
+                scanned_ally_html = "".join([format_badge_html(a, "scanned_ally") for a in alert_data["scanned_ally_groups"]])
+                st.markdown(f"<div style='margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px dashed #ccc;'><span style='color: #666; font-size: 13px; font-weight: bold;'>🎯 來自目標社群 (A) 之相關同盟：</span><br>{scanned_ally_html}</div>", unsafe_allow_html=True)
+            
+            st.markdown("<span style='color: #d9534f; font-size: 13px; font-weight: bold;'>⚠️ 命中預警黑名單 (B) 及其同盟：</span>", unsafe_allow_html=True)
+            
+            if "grouped_matches" in alert_data:
+                for cluster in alert_data["grouped_matches"]:
+                    # 修正點：確保變數名稱 core_html 與下方使用的 {core_html} 一致
+                    core_html = format_badge_html(cluster["core"], "core")
+                    ally_html_content = ""
+                    if cluster["allies"]:
+                        ally_badges = "".join([format_badge_html(a, "ally") for a in cluster["allies"]])
+                        ally_html_content = f"<div style='margin-top:4px;margin-left:20px;display:flex;align-items:center;'><span style='color:#ccc;margin-right:5px;'>└─ </span>{ally_badges}</div>"
+                    
+                    # 修正點：將 {core_h} 改為 {core_html}，{ally_h} 改為 {ally_html_content}
+                    st.markdown(f"<div style='margin-bottom:8px;padding-left:8px;border-left:3px solid #d9534f;background-color:rgba(255,0,0,0.03);padding:5px 0 5px 8px;border-radius:0 5px 5px 0;'><div>{core_html}</div>{ally_html_content}</div>", unsafe_allow_html=True)
     with st.container(border=True):
         col1, col2 = st.columns([1, 6])
         with col1:
