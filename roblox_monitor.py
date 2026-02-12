@@ -15,6 +15,7 @@ st.set_page_config(page_title="Roblox 情報與預警系統", page_icon="👁️
 st.markdown("""
     <style>
     .block-container { padding-top: 2rem; padding-bottom: 2rem; }
+    code { color: #eb4034; background-color: rgba(235, 64, 52, 0.1); padding: 2px 4px; border-radius: 4px; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -41,7 +42,7 @@ with st.sidebar:
     st.divider()
     st.metric("已載入預警社群數", f"{len(WARNING_GROUP_IDS)} 個")
 
-# === API 抓取功能區 === (維持原邏輯)
+# === API 抓取與工具函數 ===
 
 def get_short_name(full_name):
     match = re.search(r'\[(.*?)\]', full_name)
@@ -244,46 +245,38 @@ def fetch_alert_data(user_id, user_name, relation_type, warning_group_ids, scann
                 report["scanned_ally_groups"].append({"group_id": ally_id, "group_name": get_short_name(ally_info['name']), "role_name": ally_info['role'], "rank_num": ally_info['rank']})
     return report
 
-# ================= 核心顯示函式 (修正變數命名與重複定義錯誤) =================
 def draw_alert_card(alert_data):
     with st.container(border=True):
         col1, col2 = st.columns([1, 6])
         with col1:
-            # 確保有頭像圖片，若無則顯示預設圖
             safe_avatar = alert_data.get("avatar_url") or "https://tr.rbxcdn.com/38c6edcb50633730ff4cf39ac8859840/150/150/AvatarHeadshot/Png"
             st.image(safe_avatar, use_container_width=True)
-        # 在 draw_alert_card 函式內
         with col2:
-            # 這裡確保使用了傳入的 user_name
-            st.markdown(f"#### 🚨 {alert_data['user_name']} `(ID: {alert_data['user_id']})`") 
+            # 💡 顯示名稱與 ID 同時並排
+            st.markdown(f"#### 🚨 {alert_data['user_name']} <code>ID: {alert_data['user_id']}</code>", unsafe_allow_html=True) 
             st.caption(f"身分關聯: **{alert_data['relation']}**")
             
-            # 顯示掃描目標群組的同盟資訊 (如有)
             if alert_data.get("scanned_ally_groups"):
                 scanned_ally_html = "".join([format_badge_html(a, "scanned_ally") for a in alert_data["scanned_ally_groups"]])
                 st.markdown(f"<div style='margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px dashed #ccc;'><span style='color: #666; font-size: 13px; font-weight: bold;'>🎯 來自目標社群 (A) 之相關同盟：</span><br>{scanned_ally_html}</div>", unsafe_allow_html=True)
             
             st.markdown("<span style='color: #d9534f; font-size: 13px; font-weight: bold;'>⚠️ 命中預警黑名單 (B) 及其同盟：</span>", unsafe_allow_html=True)
             
-            # 遍歷命中結果並生成 HTML 標籤
             if "grouped_matches" in alert_data:
                 for cluster in alert_data["grouped_matches"]:
-                    # 正確定義核心與同盟的 HTML 變數
                     core_html = format_badge_html(cluster["core"], "core")
                     ally_html_content = ""
-                    
                     if cluster["allies"]:
                         ally_badges = "".join([format_badge_html(a, "ally") for a in cluster["allies"]])
                         ally_html_content = f"<div style='margin-top:4px;margin-left:20px;display:flex;align-items:center;'><span style='color:#ccc;margin-right:5px;'>└─ </span>{ally_badges}</div>"
                     
-                    # 使用正確的變數名稱填入 f-string
                     st.markdown(
                         f"<div style='margin-bottom:8px;padding-left:8px;border-left:3px solid #d9534f;"
                         f"background-color:rgba(255,0,0,0.03);padding:5px 0 5px 8px;border-radius:0 5px 5px 0;'>"
                         f"<div>{core_html}</div>{ally_html_content}</div>", 
                         unsafe_allow_html=True
                     )
-# ================= 統整表格優化 (強化階層辨識) =================
+
 def draw_summary_dashboard(alerted_list, total_scanned, title="掃描總結"):
     st.divider()
     st.markdown(f"### 📊 {title} 報告")
@@ -297,14 +290,15 @@ def draw_summary_dashboard(alerted_list, total_scanned, title="掃描總結"):
         df_data = [{"頭像": m["avatar_url"], "名稱": m["user_name"], "關聯": m["relation"], "預警核心": "\n".join([format_df_string(g, "core") for g in m["core_groups"]]), "預警附屬": "\n".join([format_df_string(a, "ally") for a in m["ally_groups"]]) if m.get("ally_groups") else "無", "玩家 ID": str(m["user_id"])} for m in alerted_list]
         st.dataframe(pd.DataFrame(df_data), column_config={"頭像": st.column_config.ImageColumn("大頭貼"), "玩家 ID": st.column_config.TextColumn("ID")}, hide_index=True, use_container_width=True)
 
-# ================= Streamlit 網頁介面 =================
+# ================= Streamlit 網頁主程式 =================
 st.title("👁️‍🗨️ Roblox 深度情報交叉比對系統")
 
 if not WARNING_GROUP_IDS:
     st.error("👈 請先在左側邊欄輸入有效的「高風險社群 ID」！")
 else:
-    tab1, tab2,tab3= st.tabs(["👤 單一目標深度掃描", "🛡️ 群組大範圍降維掃描","🔍 玩家帳號查詢"])
+    tab1, tab2, tab3 = st.tabs(["👤 單一目標深度掃描", "🛡️ 群組大範圍降維掃描", "🔍 玩家帳號深度查詢"])
 
+    # ---------------- Tab 1: 單一目標掃描 ----------------
     with tab1:
         st.subheader("針對單一目標及其社交圈進行掃描")
         c1, c2 = st.columns([2, 1])
@@ -341,31 +335,25 @@ else:
                     # --- 第二部分：掃描社交圈 ---
                     st.markdown("### 👥 社交圈關聯掃描 (好友/關注/粉絲)")
                     
-                    # 獲取社交圈資料
                     scan_queue = []
                     with st.status("正在獲取社交圈資料...", expanded=True) as status:
                         friends = get_user_friends(uid)
                         for f in friends:
-                            if str(f["id"]) != str(uid): 
-                                scan_queue.append({"id": f["id"], "name": f["name"], "rel": "目標的好友"})
+                            if str(f["id"]) != str(uid): scan_queue.append({"id": f["id"], "name": f["name"], "rel": "目標的好友"})
                         
                         followings = get_user_followings(uid, limit=limit)
                         for f in followings:
-                            if str(f["id"]) != str(uid): 
-                                scan_queue.append({"id": f["id"], "name": f["name"], "rel": "目標關注的人"})
+                            if str(f["id"]) != str(uid): scan_queue.append({"id": f["id"], "name": f["name"], "rel": "目標關注的人"})
                             
                         followers = get_user_followers(uid, limit=limit)
                         for f in followers:
-                            if str(f["id"]) != str(uid): 
-                                scan_queue.append({"id": f["id"], "name": f["name"], "rel": "目標的粉絲"})
+                            if str(f["id"]) != str(uid): scan_queue.append({"id": f["id"], "name": f["name"], "rel": "目標的粉絲"})
                         
                         status.update(label=f"✅ 資料獲取完成 (共 {len(scan_queue)} 位關聯人員)", state="complete", expanded=False)
                     
                     total_to_scan = len(scan_queue)
                     if total_to_scan > 0:
-                        # 建立進度條容器 (稍後會消失)
                         progress_placeholder = st.empty()
-                        
                         found_in_social = 0
                         start_time = time.time()
                         
@@ -373,33 +361,39 @@ else:
                             p_bar = st.progress(0)
                             p_text = st.empty()
                         
-                        # 開始掃描：卡片直接畫在 placeholder 之外，這樣就不會消失
                         for i, person in enumerate(scan_queue):
-                            # 更新進度與 ETA
+                            # ETA 與進度
                             elapsed = time.time() - start_time
                             eta = int((elapsed / (i + 1)) * (total_to_scan - (i + 1)))
-                            
                             p_bar.progress((i + 1) / total_to_scan)
-                            p_text.caption(f"⏳ 正在交叉比對社交圈... 預計剩餘時間：{eta//60}分{eta%60}秒 ({i+1}/{total_to_scan})")
+                            p_text.caption(f"⏳ 交叉比對中... 預計剩餘時間：{eta//60}分{eta%60}秒 ({i+1}/{total_to_scan})")
                             
+                            # 1. 執行初步檢查
                             alert = fetch_alert_data(person["id"], person["name"], person["rel"], WARNING_GROUP_IDS)
                             if alert:
+                                # 💡 自動連動：若命中預警，立即查詢真實顯示名稱 (DisplayName)
+                                try:
+                                    u_api = f"https://users.roblox.com/v1/users/{person['id']}"
+                                    u_data = requests.get(u_api, timeout=5).json()
+                                    real_name = u_data.get("name", person["name"])
+                                    disp_name = u_data.get("displayName", "")
+                                    alert["user_name"] = f"{disp_name} (@{real_name})"
+                                except:
+                                    alert["user_name"] = person["name"]
+
                                 alerted_list.append(alert)
                                 found_in_social += 1
-                                # 💡 直接在主頁面上繪製卡片，不會隨進度條消失
+                                # 即時保留顯示卡片
                                 draw_alert_card(alert)
                         
-                        # 掃描完成後，移除進度條
                         progress_placeholder.empty()
-                        
-                        if found_in_social == 0:
-                            st.write("✨ 社交圈掃描完成，未發現預警對象。")
-                    else:
-                        st.write("此玩家無公開社交圈資料。")
+                        if found_in_social == 0: st.write("✨ 社交圈掃描完成，未發現預警對象。")
+                    else: st.write("此玩家無公開社交圈資料。")
 
-                    # 第三部分：顯示總結報告
                     draw_summary_dashboard(alerted_list, total_to_scan + 1, f"{uname} 深度掃描")
                     st.balloons()
+
+    # ---------------- Tab 2: 大型群組掃描 ----------------
     with tab2:
         st.subheader("針對大型群組進行地毯式排查")
         target_group_id = st.text_input("請輸入目標群組 ID (Group ID)：", placeholder="例如: 1234567", key="input_group")
@@ -418,7 +412,6 @@ else:
             roles = st.session_state.group_roles_cache[target_group_id]
             role_options = [f"[Rank: {r['rank']}] {r['name']} (約 {r['memberCount']} 人)" for r in roles]
             
-            # ========== 這裡已還原為原本的雙欄與格式化顯示 ==========
             col1, col2 = st.columns(2)
             with col1:
                 start_idx = st.selectbox("起始階層：", range(len(role_options)), format_func=lambda x: role_options[x], index=0)
@@ -441,7 +434,8 @@ else:
                             if a: draw_alert_card(a); alerted_m.append(a)
                         draw_summary_dashboard(alerted_m, len(mems), "群組深度排查")
                         st.balloons()
-    # ================= Tab 3: 玩家個資深度查詢 =================
+
+    # ---------------- Tab 3: 玩家個資深度查詢 ----------------
     with tab3:
         st.subheader("👤 玩家帳號資訊深度查詢")
         q_col1, q_col2 = st.columns([2, 1])
@@ -457,78 +451,49 @@ else:
                     if not target_uid:
                         st.error("❌ 無法找到該玩家。")
                     else:
-                        # 抓取額外詳細資訊
-                        user_detail_url = f"https://users.roblox.com/v1/users/{target_uid}"
-                        friends_count_url = f"https://friends.roblox.com/v1/users/{target_uid}/friends/count"
-                        
                         try:
-                            detail_res = requests.get(user_detail_url).json()
-                            friend_count = requests.get(friends_count_url).json().get("count", "未知")
+                            detail_res = requests.get(f"https://users.roblox.com/v1/users/{target_uid}").json()
+                            friend_count = requests.get(f"https://friends.roblox.com/v1/users/{target_uid}/friends/count").json().get("count", "未知")
                             avatar_url = get_user_thumbnail(target_uid)
                             
                             st.divider()
                             info_c1, info_c2 = st.columns([1, 2])
-                            
                             with info_c1:
                                 st.image(avatar_url, caption=f"ID: {target_uid}", use_container_width=True)
-                            
                             with info_c2:
                                 st.markdown(f"### {detail_res.get('displayName')} (@{detail_res.get('name')})")
+                                m1, m2, m3 = st.columns(3)
+                                m1.metric("好友數量", f"{friend_count} 人")
+                                m2.metric("加入日期", detail_res.get('created', "").split("T")[0])
+                                m3.metric("帳號狀態", "🔴 已封鎖" if detail_res.get('isBanned') else "🟢 正常")
                                 
-                                # 帳號基本資料表
-                                metrics_c1, metrics_c2, metrics_c3 = st.columns(3)
-                                metrics_c1.metric("好友數量", f"{friend_count} 人")
-                                
-                                # 處理日期格式
-                                raw_date = detail_res.get('created', "")
-                                join_date = raw_date.split("T")[0] if "T" in raw_date else "未知"
-                                metrics_c2.metric("加入日期", join_date)
-                                
-                                # 帳號狀態
-                                is_banned = "🔴 已封鎖" if detail_res.get('isBanned') else "🟢 正常"
-                                metrics_c3.metric("帳號狀態", is_banned)
-                                
-                                # 顯示該玩家目前加入的社群總覽
                                 st.markdown("---")
                                 st.markdown("#### 🚩 目前加入的群組總覽 (情報交叉比對)")
                                 groups = get_user_groups(target_uid)
                                 if groups:
-                                    # 計算命中預警的群組數量
                                     matched_count = len(set(groups.keys()).intersection(WARNING_GROUP_IDS))
                                     if matched_count > 0:
                                         st.warning(f"⚠️ 偵測到該玩家已加入 {matched_count} 個監控中的高風險社群！")
 
-                                    # 建立滾動容器的開頭
-                                    html_list = [
-                                        "<div style='display:flex; flex-wrap:wrap; gap:10px; max-height:400px; overflow-y:auto; padding:10px; background-color:rgba(0,0,0,0.05); border-radius:10px; border:1px solid #ddd;'>"
-                                    ]
-                                    
+                                    html_list = ["<div style='display:flex; flex-wrap:wrap; gap:10px; max-height:400px; overflow-y:auto; padding:10px; background-color:rgba(0,0,0,0.05); border-radius:10px; border:1px solid #ddd;'>"]
                                     for gid, ginfo in groups.items():
                                         is_warning = gid in WARNING_GROUP_IDS
                                         bg_color, icon = get_rank_style(ginfo['rank'], ginfo['role'])
+                                        w_border = "border: 2px solid #FF0000; box-shadow: 0 0 8px #FF0000;" if is_warning else "border: 1px solid rgba(0,0,0,0.1);"
+                                        w_prefix = "🚨 " if is_warning else ""
                                         
-                                        # 定義樣式變數以避免在大括號內產生衝突
-                                        warning_border = "border: 2px solid #FF0000; box-shadow: 0 0 8px #FF0000;" if is_warning else "border: 1px solid rgba(0,0,0,0.1);"
-                                        warning_prefix = "🚨 " if is_warning else ""
-                                        
-                                        # 使用單行字串拼接以確保 Streamlit 解析穩定
                                         card_html = (
                                             f'<a href="https://www.roblox.com/groups/{gid}" target="_blank" style="text-decoration: none;">'
                                             f'<div style="background-color: {bg_color}; color: white; padding: 6px 14px; border-radius: 8px; font-size: 13px; '
-                                            f'{warning_border} display: flex; flex-direction: column; min-width: 120px;">'
-                                            f'<div style="font-weight: bold; margin-bottom: 2px;">{warning_prefix}{ginfo["name"]}</div>'
+                                            f'{w_border} display: flex; flex-direction: column; min-width: 120px;">'
+                                            f'<div style="font-weight: bold; margin-bottom: 2px;">{w_prefix}{ginfo["name"]}</div>'
                                             f'<div style="font-size: 10px; opacity: 0.9; border-top: 1px solid rgba(255,255,255,0.3); padding-top: 2px;">'
                                             f'{icon} {ginfo["role"]} (ID: {gid})'
                                             f'</div></div></a>'
                                         )
                                         html_list.append(card_html)
-                                    
                                     html_list.append("</div>")
-                                    # 最終合併並輸出
                                     st.markdown("".join(html_list), unsafe_allow_html=True)
-                                    st.caption(f"💡 列表已根據職位權重自動著色。共有 {len(groups)} 個群組。")
-                                else:
-                                    st.info("ℹ️ 此玩家目前未加入任何公開群組。")
-                                    
-                        except Exception as e:
-                            st.error(f"查詢過程中發生錯誤: {e}")
+                                    st.caption(f"💡 共計加入 {len(groups)} 個群組。紅色標籤為高風險命中。")
+                                else: st.info("ℹ️ 此玩家目前未加入任何公開群組。")
+                        except Exception as e: st.error(f"查詢錯誤: {e}")
