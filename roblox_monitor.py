@@ -489,41 +489,63 @@ else:
                                 metrics_c3.metric("帳號狀態", is_banned)
                                 
                                 # 顯示該玩家目前加入的社群總覽
+                                # 顯示該玩家目前加入的社群總覽
                                 st.markdown("---")
-                                st.markdown("#### 🚩 目前加入的群組總覽")
+                                st.markdown("#### 🚩 目前加入的群組總覽 (情報交叉比對)")
                                 groups = get_user_groups(target_uid)
                                 if groups:
-                                    # 使用容器包裹標籤，避免撐開頁面
-                                    group_container = st.container()
-                                    with group_container:
-                                        # 建立美化的 HTML 標籤雲
-                                        html_content = "<div style='display: flex; flex-wrap: wrap; gap: 8px;'>"
-                                        for gid, ginfo in groups.items():
-                                            # 根據 Rank 決定標籤顏色 (延用系統色系)
-                                            bg_color, _ = get_rank_style(ginfo['rank'], ginfo['role'])
-                                            
-                                            # 組合成帶有連結與樣式的標籤
-                                            html_content += f"""
-                                                <a href="https://www.roblox.com/groups/{gid}" target="_blank" style="text-decoration: none;">
-                                                    <div style="
-                                                        background-color: {bg_color}; 
-                                                        color: white; 
-                                                        padding: 4px 12px; 
-                                                        border-radius: 15px; 
-                                                        font-size: 12px; 
-                                                        font-weight: 500;
-                                                        box-shadow: 1px 1px 3px rgba(0,0,0,0.2);
-                                                        transition: transform 0.2s;
-                                                        cursor: pointer;
-                                                    ">
-                                                        {ginfo['name']} <span style="opacity: 0.8; font-size: 10px;">| {ginfo['role']}</span>
-                                                    </div>
-                                                </a>
-                                            """
-                                        html_content += "</div>"
-                                        st.markdown(html_content, unsafe_allow_html=True)
+                                    # 計算命中預警的群組數量
+                                    matched_count = len(set(groups.keys()).intersection(WARNING_GROUP_IDS))
+                                    if matched_count > 0:
+                                        st.warning(f"⚠️ 偵測到該玩家已加入 {matched_count} 個監控中的高風險社群！")
+
+                                    # 使用 scrollable container 避免長度過長
+                                    html_content = """
+                                    <div style="
+                                        display: flex; 
+                                        flex-wrap: wrap; 
+                                        gap: 10px; 
+                                        max-height: 400px; 
+                                        overflow-y: auto; 
+                                        padding: 10px; 
+                                        background-color: rgba(0,0,0,0.05); 
+                                        border-radius: 10px;
+                                        border: 1px solid #ddd;
+                                    ">"""
                                     
-                                    st.caption(f"💡 共計加入 {len(groups)} 個群組。點擊標籤可跳轉至該群組頁面。")
+                                    for gid, ginfo in groups.items():
+                                        # 檢查是否為預警群組
+                                        is_warning = gid in WARNING_GROUP_IDS
+                                        # 獲取階層顏色
+                                        bg_color, icon = get_rank_style(ginfo['rank'], ginfo['role'])
+                                        
+                                        # 如果是預警群組，強化外框與陰影
+                                        warning_style = "border: 2px solid #FF0000; box-shadow: 0 0 8px #FF0000;" if is_warning else "border: 1px solid rgba(0,0,0,0.1);"
+                                        warning_prefix = "🚨 " if is_warning else ""
+                                        
+                                        html_content += f"""
+                                            <a href="https://www.roblox.com/groups/{gid}" target="_blank" style="text-decoration: none;">
+                                                <div style="
+                                                    background-color: {bg_color}; 
+                                                    color: white; 
+                                                    padding: 6px 14px; 
+                                                    border-radius: 8px; 
+                                                    font-size: 13px; 
+                                                    {warning_style}
+                                                    display: flex;
+                                                    flex-direction: column;
+                                                    min-width: 120px;
+                                                ">
+                                                    <div style="font-weight: bold; margin-bottom: 2px;">{warning_prefix}{ginfo['name']}</div>
+                                                    <div style="font-size: 10px; opacity: 0.9; border-top: 1px solid rgba(255,255,255,0.3); padding-top: 2px;">
+                                                        {icon} {ginfo['role']} (ID: {gid})
+                                                    </div>
+                                                </div>
+                                            </a>
+                                        """
+                                    html_content += "</div>"
+                                    st.markdown(html_content, unsafe_allow_html=True)
+                                    st.caption(f"💡 列表已根據職位權重自動著色。共有 {len(groups)} 個群組。")
                                 else:
                                     st.info("ℹ️ 此玩家目前未加入任何公開群組。")
                                     
