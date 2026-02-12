@@ -412,6 +412,48 @@ def draw_alert_card(alert_data):
             safe_avatar = alert_data.get("avatar_url")
             if not safe_avatar:
                 safe_avatar = "https://tr.rbxcdn.com/38c6edcb50633730ff4cf39ac8859840/150/150/AvatarHeadshot/Png"
+            st.image(safe_avatar, use_container_width=True)
+            
+        with col2:
+            st.markdown(f"#### 🚨 {alert_data['user_name']} `(ID: {alert_data['user_id']})`")
+            st.caption(f"身分關聯: **{alert_data['relation']}**")
+            
+            # 1. 最上方：顯示「掃描目標社群 (A)」的相關同盟
+            if alert_data.get("scanned_ally_groups"):
+                scanned_ally_html = "".join([format_badge_html(a, "scanned_ally") for a in alert_data["scanned_ally_groups"]])
+                # 使用單行 HTML 避免 Markdown 縮排問題
+                st.markdown(f"<div style='margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px dashed #ccc;'><span style='color: #666; font-size: 13px; font-weight: bold;'>🎯 來自目標社群 (A) 之相關同盟：</span><br>{scanned_ally_html}</div>", unsafe_allow_html=True)
+
+            # 2. 預警名單區塊 (B)：分組顯示
+            st.markdown("<span style='color: #d9534f; font-size: 13px; font-weight: bold;'>⚠️ 命中預警黑名單 (B) 及其同盟：</span>", unsafe_allow_html=True)
+            
+            # 檢查是否有新結構資料
+            if "grouped_matches" in alert_data:
+                for cluster in alert_data["grouped_matches"]:
+                    core_html = format_badge_html(cluster["core"], "core")
+                    
+                    ally_html_content = ""
+                    if cluster["allies"]:
+                        ally_badges = "".join([format_badge_html(a, "ally") for a in cluster["allies"]])
+                        # 【修正重點】這裡改為單行字串，移除所有換行與縮排
+                        ally_html_content = f"<div style='margin-top: 4px; margin-left: 20px; display: flex; align-items: center;'><span style='color: #ccc; margin-right: 5px;'>└─ </span>{ally_badges}</div>"
+                    
+                    # 【修正重點】外層容器也改為緊湊格式
+                    st.markdown(f"<div style='margin-bottom: 8px; padding-left: 8px; border-left: 3px solid #d9534f; background-color: rgba(255, 0, 0, 0.03); padding-top: 5px; padding-bottom: 5px; border-radius: 0 5px 5px 0;'><div>{core_html}</div>{ally_html_content}</div>", unsafe_allow_html=True)
+            
+            # (相容性備案) 舊結構資料
+            elif alert_data.get("core_groups"):
+                core_html = "".join([format_badge_html(g, "core") for g in alert_data["core_groups"]])
+                st.markdown(core_html, unsafe_allow_html=True)
+                if alert_data.get("ally_groups"):
+                    ally_html = "".join([format_badge_html(a, "ally") for a in alert_data["ally_groups"]])
+                    st.markdown(f"<div style='margin-top: 4px;'>{ally_html}</div>", unsafe_allow_html=True)
+    with st.container(border=True):
+        col1, col2 = st.columns([1, 6])
+        with col1:
+            safe_avatar = alert_data.get("avatar_url")
+            if not safe_avatar:
+                safe_avatar = "https://tr.rbxcdn.com/38c6edcb50633730ff4cf39ac8859840/150/150/AvatarHeadshot/Png"
                 
             st.image(safe_avatar, use_container_width=True)
             
@@ -464,7 +506,7 @@ def draw_alert_card(alert_data):
                 if alert_data.get("ally_groups"):
                     ally_html = "".join([format_badge_html(a, "ally") for a in alert_data["ally_groups"]])
                     st.markdown(f"<div style='margin-top: 4px;'>{ally_html}</div>", unsafe_allow_html=True)
-                    
+
     with st.container(border=True):
         col1, col2 = st.columns([1, 6])
         with col1:
