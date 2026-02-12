@@ -341,31 +341,54 @@ def fetch_alert_data(user_id, user_name, relation_type, warning_group_ids, scann
         "user_id": user_id,
         "relation": relation_type,
         "avatar_url": get_user_thumbnail(user_id), 
-        "core_groups": [],
-        "ally_groups": [],
-        "scanned_ally_groups": []
+        "core_groups": [],         # 保留給總結表使用 (扁平清單)
+        "ally_groups": [],         # 保留給總結表使用 (扁平清單)
+        "scanned_ally_groups": [], # 掃描目標的同盟
+        "grouped_matches": []      # 【新功能】結構化的分組資料
     }
     
     for gid in matched_ids:
         g_info = user_groups[gid]
-        report["core_groups"].append({
+        
+        # 建立核心群組資料物件
+        core_data = {
             "group_id": gid, 
             "group_name": get_short_name(g_info['name']),
             "role_name": g_info['role'],
             "rank_num": g_info['rank']
-        })
+        }
         
+        # 加入舊有扁平清單 (維持相容性)
+        report["core_groups"].append(core_data)
+        
+        # 準備這個核心群組的「專屬區塊」，用來裝它自己和它的同盟
+        current_cluster = {
+            "core": core_data,
+            "allies": []
+        }
+        
+        # 找這個核心群組的同盟
         allies = get_group_allies(gid)
         if allies:
             matched_allies = set(user_groups.keys()).intersection(set(allies.keys()))
             for ally_id in matched_allies:
                 ally_info = user_groups[ally_id]
-                report["ally_groups"].append({
+                
+                ally_data = {
                     "group_id": ally_id,
                     "group_name": get_short_name(ally_info['name']),
                     "role_name": ally_info['role'],
                     "rank_num": ally_info['rank']
-                })
+                }
+                
+                # 加入舊有扁平清單
+                report["ally_groups"].append(ally_data)
+                
+                # 【關鍵】加入當前核心群組的專屬同盟清單
+                current_cluster["allies"].append(ally_data)
+        
+        # 將整包 (核心+它的同盟) 放入 grouped_matches
+        report["grouped_matches"].append(current_cluster)
                 
     if scanned_group_id:
         target_allies = get_group_allies(scanned_group_id)
@@ -383,6 +406,65 @@ def fetch_alert_data(user_id, user_name, relation_type, warning_group_ids, scann
     return report
 
 def draw_alert_card(alert_data):
+    with st.container(border=True):
+        col1, col2 = st.columns([1, 6])
+        with col1:
+            safe_avatar = alert_data.get("avatar_url")
+            if not safe_avatar:
+                safe_avatar = "https://tr.rbxcdn.com/38c6edcb50633730ff4cf39ac8859840/150/150/AvatarHeadshot/Png"
+                
+            st.image(safe_avatar, use_container_width=True)
+            
+        with col2:
+            st.markdown(f"#### 🚨 {alert_data['user_name']} `(ID: {alert_data['user_id']})`")
+            st.caption(f"身分關聯: **{alert_data['relation']}**")
+            
+            # 1. 最上方：顯示「掃描目標社群 (A)」的相關同盟 (維持上次修改)
+            if alert_data.get("scanned_ally_groups"):
+                scanned_ally_html = "".join([format_badge_html(a, "scanned_ally") for a in alert_data["scanned_ally_groups"]])
+                st.markdown(f"""
+                    <div style='margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px dashed #ccc;'>
+                        <span style='color: #666; font-size: 13px; font-weight: bold;'>🎯 來自目標社群 (A) 之相關同盟：</span>
+                        <br>{scanned_ally_html}
+                    </div>
+                """, unsafe_allow_html=True)
+
+            # 2. 預警名單區塊 (B)：改為分組顯示
+            st.markdown("<span style='color: #d9534f; font-size: 13px; font-weight: bold;'>⚠️ 命中預警黑名單 (B) 及其同盟：</span>", unsafe_allow_html=True)
+            
+            # 檢查是否有新結構資料
+            if "grouped_matches" in alert_data:
+                for cluster in alert_data["grouped_matches"]:
+                    # 產生核心群組 HTML
+                    core_html = format_badge_html(cluster["core"], "core")
+                    
+                    # 產生該核心的同盟 HTML
+                    ally_html_content = ""
+                    if cluster["allies"]:
+                        ally_badges = "".join([format_badge_html(a, "ally") for a in cluster["allies"]])
+                        # 使用縮排符號 └─ 來表示隸屬關係
+                        ally_html_content = f"""
+                        <div style="margin-top: 4px; margin-left: 20px; display: flex; align-items: center;">
+                            <span style="color: #ccc; margin-right: 5px;">└─ </span> {ally_badges}
+                        </div>
+                        """
+                    
+                    # 將整組包在一個 div 中，左邊加一條紅線做視覺區隔
+                    st.markdown(f"""
+                    <div style="margin-bottom: 8px; padding-left: 8px; border-left: 3px solid #d9534f; background-color: rgba(255, 0, 0, 0.03); padding-top: 5px; padding-bottom: 5px; border-radius: 0 5px 5px 0;">
+                        <div>{core_html}</div>
+                        {ally_html_content}
+                    </div>
+                    """, unsafe_allow_html=True)
+            
+            # (相容性備案) 如果資料是舊結構，還是嘗試顯示
+            elif alert_data.get("core_groups"):
+                core_html = "".join([format_badge_html(g, "core") for g in alert_data["core_groups"]])
+                st.markdown(core_html, unsafe_allow_html=True)
+                if alert_data.get("ally_groups"):
+                    ally_html = "".join([format_badge_html(a, "ally") for a in alert_data["ally_groups"]])
+                    st.markdown(f"<div style='margin-top: 4px;'>{ally_html}</div>", unsafe_allow_html=True)
+                    
     with st.container(border=True):
         col1, col2 = st.columns([1, 6])
         with col1:
