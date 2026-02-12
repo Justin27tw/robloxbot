@@ -328,77 +328,71 @@ else:
                     # --- 第一部分：掃描目標玩家本體 ---
                     st.markdown("### 🎯 目標玩家本體掃描")
                     with st.container(border=True):
-                        with st.spinner("正在檢查目標玩家本體..."):
-                            main_alert = fetch_alert_data(uid, uname, "目標玩家本體", WARNING_GROUP_IDS)
-                            if main_alert:
-                                alerted_list.append(main_alert)
-                                draw_alert_card(main_alert)
-                            else:
-                                st.info("💡 該目標玩家本體未命中預警名單。")
+                        main_alert = fetch_alert_data(uid, uname, "目標玩家本體", WARNING_GROUP_IDS)
+                        if main_alert:
+                            alerted_list.append(main_alert)
+                            draw_alert_card(main_alert)
+                        else:
+                            st.info("💡 該目標玩家本體未命中預警名單。")
 
-                    st.markdown("<br>", unsafe_allow_html=True)
                     st.divider() 
 
                     # --- 第二部分：掃描社交圈 ---
                     st.markdown("### 👥 社交圈關聯掃描 (好友/關注/粉絲)")
                     
+                    # 使用 empty 容器，以便後續清除進度資訊
+                    progress_placeholder = st.empty()
+                    
                     scan_queue = []
+                    # 獲取社交圈資料
                     with st.status("正在獲取社交圈資料...", expanded=True) as status:
-                        # 抓取好友並排除本人
-                        st.write("正在讀取好友列表...")
                         friends = get_user_friends(uid)
                         for f in friends:
-                            if str(f["id"]) != str(uid): # 排除重複
-                                scan_queue.append({"id": f["id"], "name": f["name"], "rel": "目標的好友"})
+                            if str(f["id"]) != str(uid): scan_queue.append({"id": f["id"], "name": f["name"], "rel": "目標的好友"})
                         
-                        st.write("正在讀取關注中名單...")
                         followings = get_user_followings(uid, limit=limit)
                         for f in followings:
-                            if str(f["id"]) != str(uid):
-                                scan_queue.append({"id": f["id"], "name": f["name"], "rel": "目標關注的人"})
+                            if str(f["id"]) != str(uid): scan_queue.append({"id": f["id"], "name": f["name"], "rel": "目標關注的人"})
                             
-                        st.write("正在讀取粉絲名單...")
                         followers = get_user_followers(uid, limit=limit)
                         for f in followers:
-                            if str(f["id"]) != str(uid):
-                                scan_queue.append({"id": f["id"], "name": f["name"], "rel": "目標的粉絲"})
+                            if str(f["id"]) != str(uid): scan_queue.append({"id": f["id"], "name": f["name"], "rel": "目標的粉絲"})
                         
-                        total_to_scan = len(scan_queue)
-                        st.write(f"準備掃描總計 {total_to_scan} 位關聯人員...")
+                        status.update(label="✅ 資料獲取完成", state="complete", expanded=False)
+                    
+                    total_to_scan = len(scan_queue)
+                    if total_to_scan > 0:
+                        found_in_social = 0
+                        start_time = time.time()
                         
-                        if total_to_scan == 0:
-                            st.write("此玩家無公開社交圈資料。")
-                            status.update(label="✅ 無社交資料可供掃描", state="complete")
-                        else:
-                            # 開始掃描社交圈並計算時間
-                            progress_bar = st.progress(0)
-                            time_text = st.empty() # 用於顯示預計時間
-                            found_in_social = 0
-                            start_time = time.time()
+                        # 在 progress_placeholder 中建立進度顯示
+                        with progress_placeholder.container():
+                            p_bar = st.progress(0)
+                            p_text = st.empty()
                             
                             for i, person in enumerate(scan_queue):
-                                # 計算預計剩餘時間 (ETA)
-                                elapsed_time = time.time() - start_time
-                                avg_time_per_user = elapsed_time / (i + 1)
-                                remaining_users = total_to_scan - (i + 1)
-                                eta_seconds = int(remaining_users * avg_time_per_user)
+                                # ETA 計算
+                                elapsed = time.time() - start_time
+                                eta = int((elapsed / (i + 1)) * (total_to_scan - (i + 1)))
                                 
-                                # 更新介面
-                                progress_bar.progress((i + 1) / total_to_scan)
-                                time_text.caption(f"⏳ 掃描中... 預計剩餘時間：{eta_seconds // 60} 分 {eta_seconds % 60} 秒 "
-                                                 f"({i + 1}/{total_to_scan})")
+                                p_bar.progress((i + 1) / total_to_scan)
+                                p_text.caption(f"⏳ 掃描中... 預計剩餘：{eta//60}分{eta%60}秒 ({i+1}/{total_to_scan})")
                                 
                                 alert = fetch_alert_data(person["id"], person["name"], person["rel"], WARNING_GROUP_IDS)
                                 if alert:
                                     alerted_list.append(alert)
                                     found_in_social += 1
                                     draw_alert_card(alert)
-                            
-                            time_text.empty() # 掃描完後清除時間顯示
-                            status.update(label=f"✅ 社交圈掃描完成！發現 {found_in_social} 位預警人員", state="complete", expanded=False)
+                        
+                        # 核心修改：掃描結束後清除進度條與文字
+                        progress_placeholder.empty()
+                        if found_in_social == 0:
+                            st.write("✨ 社交圈掃描完成，未發現預警對象。")
+                    else:
+                        st.write("此玩家無公開社交圈資料。")
 
                     # 顯示總結報告
-                    draw_summary_dashboard(alerted_list, len(scan_queue) + 1, f"{uname} 完整深度掃描")
+                    draw_summary_dashboard(alerted_list, total_to_scan + 1, f"{uname} 深度掃描")
                     st.balloons()
     with tab2:
         st.subheader("針對大型群組進行地毯式排查")
