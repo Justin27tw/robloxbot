@@ -396,16 +396,29 @@ def draw_alert_card(alert_data):
             st.markdown(f"#### 🚨 {alert_data['user_name']} `(ID: {alert_data['user_id']})`")
             st.caption(f"身分關聯: **{alert_data['relation']}**")
             
+            # ========== 修改重點：調整顯示順序 ==========
+            
+            # 1. 先顯示：掃描目標社群 (A) 之相關同盟
+            # (僅在 Tab 2 群組掃描且有偵測到相關同盟時才會顯示)
+            if alert_data.get("scanned_ally_groups"):
+                scanned_ally_html = "".join([format_badge_html(a, "scanned_ally") for a in alert_data["scanned_ally_groups"]])
+                st.markdown(f"""
+                    <div style='margin-bottom: 8px; padding-bottom: 8px; border-bottom: 1px dashed #555;'>
+                        <span style='color: #AAA; font-size: 13px; font-weight: bold;'>🎯 來自掃描社群 (A) 之相關同盟：</span>
+                        <br>{scanned_ally_html}
+                    </div>
+                """, unsafe_allow_html=True)
+
+            # 2. 後顯示：預警名單 (B) 及其同盟
+            # 加上標題以明確區分
+            st.markdown("<span style='color: #d9534f; font-size: 13px; font-weight: bold;'>⚠️ 命中預警黑名單 (B) 及其同盟：</span>", unsafe_allow_html=True)
+            
             core_html = "".join([format_badge_html(g, "core") for g in alert_data["core_groups"]])
             st.markdown(core_html, unsafe_allow_html=True)
             
             if alert_data.get("ally_groups"):
                 ally_html = "".join([format_badge_html(a, "ally") for a in alert_data["ally_groups"]])
                 st.markdown(f"<div style='margin-top: 4px;'>{ally_html}</div>", unsafe_allow_html=True)
-                
-            if alert_data.get("scanned_ally_groups"):
-                scanned_ally_html = "".join([format_badge_html(a, "scanned_ally") for a in alert_data["scanned_ally_groups"]])
-                st.markdown(f"<div style='margin-top: 6px;'><span style='color: #888; font-size: 13px; font-weight: bold;'>🎯 該成員亦潛伏於「目標掃描社群」的同盟：</span><br>{scanned_ally_html}</div>", unsafe_allow_html=True)
 
 def draw_summary_dashboard(alerted_list, total_scanned, title="掃描總結"):
     st.divider()
