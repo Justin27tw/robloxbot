@@ -244,7 +244,6 @@ def fetch_alert_data(user_id, user_name, relation_type, warning_group_ids, scann
                 report["scanned_ally_groups"].append({"group_id": ally_id, "group_name": get_short_name(ally_info['name']), "role_name": ally_info['role'], "rank_num": ally_info['rank']})
     return report
 
-# ================= 核心顯示函式 (唯一且修正 HTML 格式) =================
 # ================= 核心顯示函式 (修正變數命名與重複定義錯誤) =================
 def draw_alert_card(alert_data):
     with st.container(border=True):
@@ -253,8 +252,10 @@ def draw_alert_card(alert_data):
             # 確保有頭像圖片，若無則顯示預設圖
             safe_avatar = alert_data.get("avatar_url") or "https://tr.rbxcdn.com/38c6edcb50633730ff4cf39ac8859840/150/150/AvatarHeadshot/Png"
             st.image(safe_avatar, use_container_width=True)
+        # 在 draw_alert_card 函式內
         with col2:
-            st.markdown(f"#### 🚨 {alert_data['user_name']} `(ID: {alert_data['user_id']})`")
+            # 這裡確保使用了傳入的 user_name
+            st.markdown(f"#### 🚨 {alert_data['user_name']} `(ID: {alert_data['user_id']})`") 
             st.caption(f"身分關聯: **{alert_data['relation']}**")
             
             # 顯示掃描目標群組的同盟資訊 (如有)
