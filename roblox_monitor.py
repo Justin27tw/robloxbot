@@ -449,36 +449,49 @@ else:
                         st.balloons()
 
     # ---------------- Tab 3: 玩家個資深度查詢 (略，同原程式) ----------------
-    with tab3:
-        st.subheader("👤 玩家帳號資訊深度查詢")
-        q_col1, q_col2 = st.columns([2, 1])
-        with q_col1:
-            query_input = st.text_input("輸入要查詢的玩家名稱或 ID：", key="query_user_input")
-        
-        if st.button("執行個資查詢", type="primary", key="btn_query"):
-            if not query_input:
-                st.error("❌ 請輸入玩家名稱或 ID")
-            else:
-                with st.spinner("正在檢索資料..."):
-                    target_uid, target_uname = resolve_user_input(query_input)
-                    if not target_uid:
-                        st.error("❌ 無法找到該玩家。")
-                    else:
-                        try:
-                            detail_res = requests.get(f"https://users.roblox.com/v1/users/{target_uid}").json()
-                            friend_count = requests.get(f"https://friends.roblox.com/v1/users/{target_uid}/friends/count").json().get("count", "未知")
-                            avatar_url = get_user_thumbnail(target_uid)
+    # ---------------- Tab 3: 玩家個資深度查詢 ----------------
+with tab3:
+    st.subheader("👤 玩家帳號資訊深度查詢")
+    q_col1, q_col2 = st.columns([2, 1])
+    with q_col1:
+        query_input = st.text_input("輸入要查詢的玩家名稱 or ID：", key="query_user_input")
+    
+    if st.button("執行個資查詢", type="primary", key="btn_query"):
+        if not query_input:
+            st.error("❌ 請輸入玩家名稱或 ID")
+        else:
+            with st.spinner("正在檢索資料..."):
+                target_uid, target_uname = resolve_user_input(query_input)
+                if not target_uid:
+                    st.error("❌ 無法找到該玩家。")
+                else:
+                    try:
+                        detail_res = requests.get(f"https://users.roblox.com/v1/users/{target_uid}").json()
+                        friend_count = requests.get(f"https://friends.roblox.com/v1/users/{target_uid}/friends/count").json().get("count", "未知")
+                        avatar_url = get_user_thumbnail(target_uid)
+                        
+                        # 建立個人主頁連結
+                        profile_url = f"https://www.roblox.com/users/{target_uid}/profile"
+                        
+                        st.divider()
+                        info_c1, info_c2 = st.columns([1, 2])
+                        with info_c1:
+                            # 修改點：讓圖片點擊後可連結至 Profile
+                            st.markdown(f'''
+                                <a href="{profile_url}" target="_blank">
+                                    <img src="{avatar_url}" style="width:100%; border-radius:10px; border:1px solid #ddd;">
+                                </a>
+                            ''', unsafe_allow_html=True)
+                            st.caption(f"ID: {target_uid} (點擊圖片進入主頁)")
                             
-                            st.divider()
-                            info_c1, info_c2 = st.columns([1, 2])
-                            with info_c1:
-                                st.image(avatar_url, caption=f"ID: {target_uid}", use_container_width=True)
-                            with info_c2:
-                                st.markdown(f"### {detail_res.get('displayName')} (@{detail_res.get('name')})")
-                                m1, m2, m3 = st.columns(3)
-                                m1.metric("好友數量", f"{friend_count} 人")
-                                m2.metric("加入日期", detail_res.get('created', "").split("T")[0])
-                                m3.metric("帳號狀態", "🔴 已封鎖" if detail_res.get('isBanned') else "🟢 正常")
+                        with info_c2:
+                            # 修改點：讓名稱點擊後可連結至 Profile
+                            st.markdown(f"### [{detail_res.get('displayName')} (@{detail_res.get('name')})]({profile_url})")
+                            
+                            m1, m2, m3 = st.columns(3)
+                            m1.metric("好友數量", f"{friend_count} 人")
+                            m2.metric("加入日期", detail_res.get('created', "").split("T")[0])
+                            m3.metric("帳號狀態", "🔴 已封鎖" if detail_res.get('isBanned') else "🟢 正常")
                                 
                                 st.markdown("---")
                                 st.markdown("#### 🚩 目前加入的群組總覽 (情報交叉比對)")
