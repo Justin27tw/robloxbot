@@ -116,10 +116,18 @@ def get_group_allies(group_id):
     return allies
 
 def get_user_friends(user_id):
-    friends, cursor = [], ""
+    friends = []
+    cursor = ""  # 分頁標記
+    
+    # 使用 while 迴圈，只要還有「下一頁」就持續掃描
     while cursor is not None:
-        url = f"https://friends.roblox.com/v1/users/{user_id}/friends?limit=100" + (f"&cursor={cursor}" if cursor else "")
+        # 加上 cursor 參數，API 才會給第 201 人之後的資料
+        url = f"https://friends.roblox.com/v1/users/{user_id}/friends?limit=100"
+        if cursor:
+            url += f"&cursor={cursor}"
+            
         try:
+<<<<<<< HEAD
             res = requests.get(url)
             if res.status_code == 200:
                 json_data = res.json()
@@ -129,8 +137,30 @@ def get_user_friends(user_id):
             elif res.status_code == 429: time.sleep(5)
             else: break
         except Exception: break
+=======
+            response = requests.get(url)
+            if response.status_code == 200:
+                data = response.json()
+                # 取得當前頁面的名單
+                page_data = data.get("data", [])
+                friends.extend([{"id": u["id"], "name": u["name"]} for u in page_data])
+                
+                # 更新游標：如果有下一頁，API 會給一段代碼；若無則回傳 None，迴圈結束
+                cursor = data.get("nextPageCursor")
+                
+                # 稍微延遲避免請求過快
+                time.sleep(0.3) 
+            elif response.status_code == 429:
+                # 頻率限制重試機制
+                time.sleep(5)
+                continue
+            else:
+                break
+        except Exception:
+            break
+            
+>>>>>>> 8e890c9 (測試優化邏輯)
     return friends
-
 def get_user_followers(user_id, limit=None):
     followers, cursor = [], ""
     while cursor is not None:
