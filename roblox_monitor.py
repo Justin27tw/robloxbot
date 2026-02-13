@@ -493,16 +493,16 @@ else:
                                     st.caption("<div style='text-align:center; color:#888;'>點擊頭像進入主頁</div>", unsafe_allow_html=True)
                                     
                                 with info_c2:
-                                    # 資訊層次優化：先顯示 Display Name (@Username)，下方顯示 ID
+                                    # 資訊層次優化：將 Display Name 與 @Username 放在同一行
                                     st.markdown(f"""
                                         <div style='margin-bottom: 10px;'>
                                             <a href='{profile_url}' target='_blank' style='text-decoration: none; color: inherit;'>
-                                                <h2 style='margin: 0;'>{detail_res.get('displayName')}</h2>
+                                                <h2 style='margin: 0; display: inline-block;'>{detail_res.get('displayName')}</h2>
                                             </a>
-                                            <span style='color: #666; font-size: 1.1em;'>@{detail_res.get('name')}</span>
+                                            <span style='color: #888; font-size: 1.2em; margin-left: 10px;'>@{detail_res.get('name')}</span>
                                         </div>
-                                        <div style='background-color: rgba(0,0,0,0.05); padding: 5px 12px; border-radius: 6px; display: inline-block; margin-bottom: 15px;'>
-                                            <code style='color: #eb4034; font-size: 1.1em;'>Roblox ID: {target_uid}</code>
+                                        <div style='background-color: rgba(235, 64, 52, 0.1); padding: 4px 12px; border-radius: 6px; display: inline-block; margin-bottom: 15px; border: 1px solid rgba(235, 64, 52, 0.2);'>
+                                            <code style='color: #eb4034; font-size: 1.0em; background: none; padding: 0;'>Roblox ID: {target_uid}</code>
                                         </div>
                                     """, unsafe_allow_html=True)
                                     
