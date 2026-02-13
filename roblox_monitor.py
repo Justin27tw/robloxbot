@@ -113,19 +113,25 @@ def get_group_allies(group_id):
     st.session_state.group_allies_cache[group_id] = allies
     return allies
 
+# 【修正重點】加入 cursor 循環，確保好友不論人數多寡都能掃描完畢
 def get_user_friends(user_id):
-    # 修改：Roblox 好友 API 雖然通常一次回傳，但加上 429 重試機制以確保大型帳號抓取穩定
-    url = f"https://friends.roblox.com/v1/users/{user_id}/friends"
-    try:
-        response = requests.get(url)
-        if response.status_code == 200:
-            data = response.json().get("data", [])
-            return [{"id": user["id"], "name": user["name"]} for user in data]
-        elif response.status_code == 429:
-            time.sleep(5)
-            return get_user_friends(user_id)
-    except Exception: pass
-    return []
+    friends, cursor = [], ""
+    while cursor is not None:
+        url = f"https://friends.roblox.com/v1/users/{user_id}/friends?limit=100" + (f"&cursor={cursor}" if cursor else "")
+        try:
+            res = requests.get(url)
+            if res.status_code == 200:
+                json_data = res.json()
+                friends.extend([{"id": u["id"], "name": u["name"]} for u in json_data.get("data", [])])
+                cursor = json_data.get("nextPageCursor")
+                time.sleep(REQUEST_DELAY)
+            elif res.status_code == 429:
+                time.sleep(5)
+            else:
+                break
+        except Exception:
+            break
+    return friends
 
 def get_user_followers(user_id, limit=None):
     followers, cursor = [], ""
@@ -320,10 +326,13 @@ else:
                 if not uid: 
                     st.error("❌ 無法解析目標玩家。")
                 else:
-                    # 修改：獲取總好友人數並顯示
-                    friend_count_api = f"https://friends.roblox.com/v1/users/{uid}/friends/count"
-                    f_count = requests.get(friend_count_api).json().get("count", "未知")
-                    st.success(f"✅ 鎖定目標：{uname} (ID: {uid}) | 👥 總好友數：{f_count}")
+                    # 【新增顯示】在畫面上方顯示總好友數
+                    f_count_api = f"https://friends.roblox.com/v1/users/{uid}/friends/count"
+                    try:
+                        f_count = requests.get(f_count_api).json().get("count", 0)
+                    except:
+                        f_count = "未知"
+                    st.success(f"✅ 鎖定目標：{uname} (ID: {uid}) | 👥 好友總數：{f_count}")
                     
                     alerted_list = []
 
@@ -343,7 +352,8 @@ else:
                     st.markdown("### 👥 社交圈關聯掃描 (好友/關注/粉絲)")
                     
                     scan_queue = []
-                    with st.status("正在獲取社交圈資料...", expanded=True) as status:
+                    with st.status("正在獲取社交圈完整資料...", expanded=True) as status:
+                        # 掃描全部好友
                         friends = get_user_friends(uid)
                         for f in friends:
                             if str(f["id"]) != str(uid): scan_queue.append({"id": f["id"], "name": f["name"], "rel": "目標的好友"})
@@ -396,7 +406,7 @@ else:
                     draw_summary_dashboard(alerted_list, total_to_scan + 1, f"{uname} 深度掃描")
                     st.balloons()
 
-    # ---------------- Tab 2: 大型群組掃描 ----------------
+    # ---------------- Tab 2: 大型群組掃描 (略，同原程式) ----------------
     with tab2:
         st.subheader("針對大型群組進行地毯式排查")
         target_group_id = st.text_input("請輸入目標群組 ID (Group ID)：", placeholder="例如: 1234567", key="input_group")
@@ -438,7 +448,7 @@ else:
                         draw_summary_dashboard(alerted_m, len(mems), "群組深度排查")
                         st.balloons()
 
-    # ---------------- Tab 3: 玩家個資深度查詢 ----------------
+    # ---------------- Tab 3: 玩家個資深度查詢 (略，同原程式) ----------------
     with tab3:
         st.subheader("👤 玩家帳號資訊深度查詢")
         q_col1, q_col2 = st.columns([2, 1])
