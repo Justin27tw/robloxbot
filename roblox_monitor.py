@@ -114,12 +114,16 @@ def get_group_allies(group_id):
     return allies
 
 def get_user_friends(user_id):
+    # 修改：Roblox 好友 API 雖然通常一次回傳，但加上 429 重試機制以確保大型帳號抓取穩定
     url = f"https://friends.roblox.com/v1/users/{user_id}/friends"
     try:
         response = requests.get(url)
         if response.status_code == 200:
             data = response.json().get("data", [])
             return [{"id": user["id"], "name": user["name"]} for user in data]
+        elif response.status_code == 429:
+            time.sleep(5)
+            return get_user_friends(user_id)
     except Exception: pass
     return []
 
@@ -252,7 +256,6 @@ def draw_alert_card(alert_data):
             safe_avatar = alert_data.get("avatar_url") or "https://tr.rbxcdn.com/38c6edcb50633730ff4cf39ac8859840/150/150/AvatarHeadshot/Png"
             st.image(safe_avatar, use_container_width=True)
         with col2:
-            # 💡 顯示名稱與 ID 同時並排
             st.markdown(f"#### 🚨 {alert_data['user_name']} <code>ID: {alert_data['user_id']}</code>", unsafe_allow_html=True) 
             st.caption(f"身分關聯: **{alert_data['relation']}**")
             
@@ -317,7 +320,11 @@ else:
                 if not uid: 
                     st.error("❌ 無法解析目標玩家。")
                 else:
-                    st.success(f"✅ 鎖定目標：{uname} (ID: {uid})")
+                    # 修改：獲取總好友人數並顯示
+                    friend_count_api = f"https://friends.roblox.com/v1/users/{uid}/friends/count"
+                    f_count = requests.get(friend_count_api).json().get("count", "未知")
+                    st.success(f"✅ 鎖定目標：{uname} (ID: {uid}) | 👥 總好友數：{f_count}")
+                    
                     alerted_list = []
 
                     # --- 第一部分：掃描目標玩家本體 ---
@@ -362,16 +369,13 @@ else:
                             p_text = st.empty()
                         
                         for i, person in enumerate(scan_queue):
-                            # ETA 與進度
                             elapsed = time.time() - start_time
                             eta = int((elapsed / (i + 1)) * (total_to_scan - (i + 1)))
                             p_bar.progress((i + 1) / total_to_scan)
                             p_text.caption(f"⏳ 交叉比對中... 預計剩餘時間：{eta//60}分{eta%60}秒 ({i+1}/{total_to_scan})")
                             
-                            # 1. 執行初步檢查
                             alert = fetch_alert_data(person["id"], person["name"], person["rel"], WARNING_GROUP_IDS)
                             if alert:
-                                # 💡 自動連動：若命中預警，立即查詢真實顯示名稱 (DisplayName)
                                 try:
                                     u_api = f"https://users.roblox.com/v1/users/{person['id']}"
                                     u_data = requests.get(u_api, timeout=5).json()
@@ -383,7 +387,6 @@ else:
 
                                 alerted_list.append(alert)
                                 found_in_social += 1
-                                # 即時保留顯示卡片
                                 draw_alert_card(alert)
                         
                         progress_placeholder.empty()
@@ -408,7 +411,7 @@ else:
 
         if target_group_id in st.session_state.group_roles_cache:
             st.divider()
-            st.markdown("#### ⚙️ 第二步：劃定打擊範圍 (Rank 區間)")
+            st.markdown("#### ⚙️ 第二步：劃定打擊範圍 (Rank 區區間)")
             roles = st.session_state.group_roles_cache[target_group_id]
             role_options = [f"[Rank: {r['rank']}] {r['name']} (約 {r['memberCount']} 人)" for r in roles]
             
