@@ -447,83 +447,106 @@ else:
                             if a: draw_alert_card(a); alerted_m.append(a)
                         draw_summary_dashboard(alerted_m, len(mems), "群組深度排查")
                         st.balloons()
-# ---------------- Tab 3: 玩家個資深度查詢 ----------------
+    # ---------------- Tab 3: 玩家個資深度查詢 (排版優化版) ----------------
     with tab3:
         st.subheader("👤 玩家帳號資訊深度查詢")
-        q_col1, q_col2 = st.columns([2, 1])
-        with q_col1:
-            query_input = st.text_input("輸入要查詢的玩家名稱 or ID：", key="query_user_input")
         
-        if st.button("執行個資查詢", type="primary", key="btn_query"):
+        # 查詢輸入區
+        with st.container(border=True):
+            q_col1, q_col2 = st.columns([3, 1])
+            with q_col1:
+                query_input = st.text_input("輸入玩家名稱 (Username) 或 ID：", key="query_user_input", placeholder="例如: Roblox 或 1")
+            with q_col2:
+                st.markdown("<br>", unsafe_allow_html=True)
+                btn_run = st.button("🔍 執行個資檢索", type="primary", use_container_width=True)
+        
+        if btn_run:
             if not query_input:
-                st.error("❌ 請輸入玩家名稱 or ID")
+                st.error("❌ 請輸入玩家名稱或 ID")
             else:
-                with st.spinner("正在檢索資料..."):
+                with st.spinner("🕵️ 正在從 Roblox 資料庫檢索深度情報..."):
                     target_uid, target_uname = resolve_user_input(query_input)
                     if not target_uid:
-                        st.error("❌ 無法找到該玩家。")
+                        st.error("❌ 無法找到該玩家，請確認名稱或 ID 是否正確。")
                     else:
                         try:
-                            # 獲取基礎資料
+                            # 資料獲取
                             detail_res = requests.get(f"https://users.roblox.com/v1/users/{target_uid}").json()
                             friend_count = requests.get(f"https://friends.roblox.com/v1/users/{target_uid}/friends/count").json().get("count", "未知")
                             avatar_url = get_user_thumbnail(target_uid)
-                            
-                            # 建立個人主頁連結
                             profile_url = f"https://www.roblox.com/users/{target_uid}/profile"
                             
-                            st.divider()
-                            info_c1, info_c2 = st.columns([1, 2])
+                            st.markdown(f"### 📄 查詢結果：{detail_res.get('displayName')}")
                             
-                            with info_c1:
-                                # 【新增】讓頭像圖片點擊後可連到 Profile
-                                st.markdown(f'''
-                                    <a href="{profile_url}" target="_blank">
-                                        <img src="{avatar_url}" style="width:100%; border-radius:10px; border:1px solid #ddd;">
-                                    </a>
-                                ''', unsafe_allow_html=True)
-                                st.caption(f"ID: {target_uid} (點擊圖片進入主頁)")
+                            # 第一部分：個人核心資訊卡
+                            with st.container(border=True):
+                                info_c1, info_c2 = st.columns([1, 3])
                                 
-                            with info_c2:
-                                # 【新增】讓名稱點擊後可連到 Profile
-                                st.markdown(f"### [{detail_res.get('displayName')} (@{detail_res.get('name')})]({profile_url})")
-                                
-                                m1, m2, m3 = st.columns(3)
-                                m1.metric("好友數量", f"{friend_count} 人")
-                                m2.metric("加入日期", detail_res.get('created', "").split("T")[0])
-                                m3.metric("帳號狀態", "🔴 已封鎖" if detail_res.get('isBanned') else "🟢 正常")
-                                
-                                st.markdown("---")
-                                st.markdown("#### 🚩 目前加入的群組總覽 (情報交叉比對)")
-                                groups = get_user_groups(target_uid)
-                                if groups:
-                                    matched_count = len(set(groups.keys()).intersection(WARNING_GROUP_IDS))
-                                    if matched_count > 0:
-                                        st.warning(f"⚠️ 偵測到該玩家已加入 {matched_count} 個監控中的高風險社群！")
-
-                                    html_list = ["<div style='display:flex; flex-wrap:wrap; gap:10px; max-height:400px; overflow-y:auto; padding:10px; background-color:rgba(0,0,0,0.05); border-radius:10px; border:1px solid #ddd;'>"]
-                                    for gid, ginfo in groups.items():
-                                        is_warning = gid in WARNING_GROUP_IDS
-                                        bg_color, icon = get_rank_style(ginfo['rank'], ginfo['role'])
-                                        w_border = "border: 2px solid #FF0000; box-shadow: 0 0 8px #FF0000;" if is_warning else "border: 1px solid rgba(0,0,0,0.1);"
-                                        w_prefix = "🚨 " if is_warning else ""
-                                        
-                                        card_html = (
-                                            f'<a href="https://www.roblox.com/groups/{gid}" target="_blank" style="text-decoration: none;">'
-                                            f'<div style="background-color: {bg_color}; color: white; padding: 6px 14px; border-radius: 8px; font-size: 13px; '
-                                            f'{w_border} display: flex; flex-direction: column; min-width: 120px;">'
-                                            f'<div style="font-weight: bold; margin-bottom: 2px;">{w_prefix}{ginfo["name"]}</div>'
-                                            f'<div style="font-size: 10px; opacity: 0.9; border-top: 1px solid rgba(255,255,255,0.3); padding-top: 2px;">'
-                                            f'{icon} {ginfo["role"]} (ID: {gid})'
-                                            f'</div></div></a>'
-                                        )
-                                        html_list.append(card_html)
-                                    html_list.append("</div>")
-                                    st.markdown("".join(html_list), unsafe_allow_html=True)
-                                    st.caption(f"💡 共計加入 {len(groups)} 個群組。紅色標籤為高風險命中。")
-                                else:
-                                    st.info("ℹ️ 此玩家目前未加入任何公開群組。")
+                                with info_c1:
+                                    # 頭像點擊連結
+                                    st.markdown(f'''
+                                        <a href="{profile_url}" target="_blank">
+                                            <img src="{avatar_url}" style="width:100%; border-radius:15px; border:2px solid #eee; transition: 0.3s;" onmouseover="this.style.borderColor='#ff4b4b'" onmouseout="this.style.borderColor='#eee'">
+                                        </a>
+                                    ''', unsafe_allow_html=True)
+                                    st.caption(f"<div style='text-align:center;'>ID: {target_uid}<br>(點擊頭像進入主頁)</div>", unsafe_allow_html=True)
                                     
+                                with info_c2:
+                                    # 名稱點擊連結
+                                    st.markdown(f"## [{detail_res.get('displayName')}]({profile_url})")
+                                    st.markdown(f"**用戶帳號：** `@{detail_res.get('name')}`")
+                                    
+                                    # 數據橫欄
+                                    m1, m2, m3 = st.columns(3)
+                                    m1.metric("👥 好友總數", f"{friend_count} 人")
+                                    m2.metric("📅 加入日期", detail_res.get('created', "").split("T")[0])
+                                    
+                                    status_label = "🔴 已封鎖 (Banned)" if detail_res.get('isBanned') else "🟢 帳號正常 (Active)"
+                                    m3.metric("狀態", status_label)
+
+                                    if detail_res.get('description'):
+                                        with st.expander("📝 玩家個人簡介"):
+                                            st.write(detail_res.get('description'))
+
+                            # 第二部分：群組資產與關係分析
+                            st.markdown("#### 🚩 所屬群組與黑名單交叉比對")
+                            groups = get_user_groups(target_uid)
+                            
+                            if groups:
+                                matched_ids = set(groups.keys()).intersection(WARNING_GROUP_IDS)
+                                
+                                if matched_ids:
+                                    st.warning(f"⚠️ **高風險預警**：該玩家目前加入了 {len(matched_ids)} 個監控中的黑名單社群！")
+                                else:
+                                    st.success("✅ **安全檢核**：未發現玩家加入任何監控中的高風險社群。")
+
+                                # 群組清單顯示區
+                                html_list = ["<div style='display:grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap:12px; max-height:500px; overflow-y:auto; padding:15px; background-color:rgba(0,0,0,0.02); border-radius:12px; border:1px solid #eee;'>"]
+                                
+                                for gid, ginfo in groups.items():
+                                    is_warning = gid in WARNING_GROUP_IDS
+                                    bg_color, icon = get_rank_style(ginfo['rank'], ginfo['role'])
+                                    
+                                    # 樣式優化
+                                    w_style = "border: 2px solid #FF4B4B; box-shadow: 0 4px 12px rgba(255,75,75,0.2); transform: scale(1.02);" if is_warning else "border: 1px solid rgba(0,0,0,0.05);"
+                                    w_prefix = "🚨 " if is_warning else ""
+                                    
+                                    card_html = (
+                                        f'<a href="https://www.roblox.com/groups/{gid}" target="_blank" style="text-decoration: none; color: inherit;">'
+                                        f'<div style="background-color: {bg_color}; color: white; padding: 10px; border-radius: 10px; font-size: 13px; '
+                                        f'{w_style} display: flex; flex-direction: column; justify-content: space-between; height: 80px;">'
+                                        f'<div style="font-weight: 800; line-height: 1.2; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;">{w_prefix}{ginfo["name"]}</div>'
+                                        f'<div style="font-size: 11px; opacity: 0.85; border-top: 1px solid rgba(255,255,255,0.2); padding-top: 5px; margin-top: auto;">'
+                                        f'{icon} {ginfo["role"]} (ID: {gid})'
+                                        f'</div></div></a>'
+                                    )
+                                    html_list.append(card_html)
+                                
+                                html_list.append("</div>")
+                                st.markdown("".join(html_list), unsafe_allow_html=True)
+                                st.caption(f"💡 系統偵測到玩家共加入 {len(groups)} 個群組。紅色外框與閃燈符號為命中監控名單。")
+                            else:
+                                st.info("ℹ️ 此玩家目前未加入任何公開群組。")
+                                
                         except Exception as e:
-                            # 【修正】補上 except 子句以符合 Python 語法
-                            st.error(f"查詢過程中發生錯誤: {e}")
+                            st.error(f"❌ 檢索失敗：{str(e)}")
