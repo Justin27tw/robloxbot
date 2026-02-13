@@ -493,30 +493,36 @@ else:
                                     st.caption("<div style='text-align:center; color:#888;'>點擊頭像進入主頁</div>", unsafe_allow_html=True)
                                     
                                 with info_c2:
-                                    # 資訊層次優化：將 Display Name 與 @Username 放在同一行
+                                    # 視覺優化：Display Name 與 Username 同行對齊，下方緊接 ID
                                     st.markdown(f"""
-                                        <div style='margin-bottom: 10px;'>
+                                        <div style='display: flex; align-items: baseline; gap: 12px; margin-bottom: 8px;'>
                                             <a href='{profile_url}' target='_blank' style='text-decoration: none; color: inherit;'>
-                                                <h2 style='margin: 0; display: inline-block;'>{detail_res.get('displayName')}</h2>
+                                                <h2 style='margin: 0; font-weight: 800; font-size: 2.2rem;'>{detail_res.get('displayName')}</h2>
                                             </a>
-                                            <span style='color: #888; font-size: 1.2em; margin-left: 10px;'>@{detail_res.get('name')}</span>
+                                            <span style='color: #888; font-size: 1.2rem; font-family: "Cascadia Code", monospace;'>@{detail_res.get('name')}</span>
                                         </div>
-                                        <div style='background-color: rgba(235, 64, 52, 0.1); padding: 4px 12px; border-radius: 6px; display: inline-block; margin-bottom: 15px; border: 1px solid rgba(235, 64, 52, 0.2);'>
-                                            <code style='color: #eb4034; font-size: 1.0em; background: none; padding: 0;'>Roblox ID: {target_uid}</code>
+                                        <div style='margin-bottom: 20px;'>
+                                            <span style='background-color: rgba(235, 64, 52, 0.1); padding: 3px 10px; border-radius: 5px; border: 1px solid rgba(235, 64, 52, 0.2);'>
+                                                <code style='color: #eb4034; font-size: 0.95rem; background: none; border: none;'>Roblox ID: {target_uid}</code>
+                                            </span>
                                         </div>
                                     """, unsafe_allow_html=True)
                                     
-                                    # 數據橫欄
+                                    # 數據橫欄美化
                                     m1, m2, m3 = st.columns(3)
-                                    m1.metric("👥 好友總數", f"{friend_count} 人")
-                                    m2.metric("📅 加入日期", detail_res.get('created', "").split("T")[0])
-                                    
-                                    status_label = "🔴 已封鎖 (Banned)" if detail_res.get('isBanned') else "🟢 帳號正常 (Active)"
-                                    m3.metric("狀態", status_label)
+                                    with m1:
+                                        st.markdown(f"**👥 好友總數**\n### {friend_count} <small>人</small>", unsafe_allow_html=True)
+                                    with m2:
+                                        st.markdown(f"**📅 加入日期**\n### {detail_res.get('created', '').split('T')[0]}", unsafe_allow_html=True)
+                                    with m3:
+                                        status_text = "🟢 帳號正常" if not detail_res.get('isBanned') else "🔴 已封鎖"
+                                        status_color = "#2E8B57" if not detail_res.get('isBanned') else "#eb4034"
+                                        st.markdown(f"**帳號狀態**\n<h3 style='color: {status_color};'>{status_text}</h3>", unsafe_allow_html=True)
 
                                     if detail_res.get('description'):
+                                        st.markdown("<br>", unsafe_allow_html=True)
                                         with st.expander("📝 玩家個人簡介"):
-                                            st.write(detail_res.get('description'))
+                                            st.info(detail_res.get('description') if detail_res.get('description').strip() else "該玩家沒有填寫簡介。")
 
                             # 第二部分：群組資產與關係分析
                             st.markdown("#### 🚩 所屬群組與黑名單交叉比對")
