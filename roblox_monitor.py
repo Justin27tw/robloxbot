@@ -448,6 +448,7 @@ else:
                         draw_summary_dashboard(alerted_m, len(mems), "群組深度排查")
                         st.balloons()
     # ---------------- Tab 3: 玩家個資深度查詢 (排版優化版) ----------------
+    # ---------------- Tab 3: 玩家個資深度查詢 (資訊層次優化版) ----------------
     with tab3:
         st.subheader("👤 玩家帳號資訊深度查詢")
         
@@ -486,15 +487,24 @@ else:
                                     # 頭像點擊連結
                                     st.markdown(f'''
                                         <a href="{profile_url}" target="_blank">
-                                            <img src="{avatar_url}" style="width:100%; border-radius:15px; border:2px solid #eee; transition: 0.3s;" onmouseover="this.style.borderColor='#ff4b4b'" onmouseout="this.style.borderColor='#eee'">
+                                            <img src="{avatar_url}" style="width:100%; border-radius:15px; border:2px solid #eee;">
                                         </a>
                                     ''', unsafe_allow_html=True)
-                                    st.caption(f"<div style='text-align:center;'>ID: {target_uid}<br>(點擊頭像進入主頁)</div>", unsafe_allow_html=True)
+                                    st.caption("<div style='text-align:center; color:#888;'>點擊頭像進入主頁</div>", unsafe_allow_html=True)
                                     
                                 with info_c2:
-                                    # 名稱點擊連結
-                                    st.markdown(f"## [{detail_res.get('displayName')}]({profile_url})")
-                                    st.markdown(f"**用戶帳號：** `@{detail_res.get('name')}`")
+                                    # 資訊層次優化：先顯示 Display Name (@Username)，下方顯示 ID
+                                    st.markdown(f"""
+                                        <div style='margin-bottom: 10px;'>
+                                            <a href='{profile_url}' target='_blank' style='text-decoration: none; color: inherit;'>
+                                                <h2 style='margin: 0;'>{detail_res.get('displayName')}</h2>
+                                            </a>
+                                            <span style='color: #666; font-size: 1.1em;'>@{detail_res.get('name')}</span>
+                                        </div>
+                                        <div style='background-color: rgba(0,0,0,0.05); padding: 5px 12px; border-radius: 6px; display: inline-block; margin-bottom: 15px;'>
+                                            <code style='color: #eb4034; font-size: 1.1em;'>Roblox ID: {target_uid}</code>
+                                        </div>
+                                    """, unsafe_allow_html=True)
                                     
                                     # 數據橫欄
                                     m1, m2, m3 = st.columns(3)
@@ -520,15 +530,14 @@ else:
                                 else:
                                     st.success("✅ **安全檢核**：未發現玩家加入任何監控中的高風險社群。")
 
-                                # 群組清單顯示區
+                                # 群組網格顯示區
                                 html_list = ["<div style='display:grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap:12px; max-height:500px; overflow-y:auto; padding:15px; background-color:rgba(0,0,0,0.02); border-radius:12px; border:1px solid #eee;'>"]
                                 
                                 for gid, ginfo in groups.items():
                                     is_warning = gid in WARNING_GROUP_IDS
                                     bg_color, icon = get_rank_style(ginfo['rank'], ginfo['role'])
                                     
-                                    # 樣式優化
-                                    w_style = "border: 2px solid #FF4B4B; box-shadow: 0 4px 12px rgba(255,75,75,0.2); transform: scale(1.02);" if is_warning else "border: 1px solid rgba(0,0,0,0.05);"
+                                    w_style = "border: 2px solid #FF4B4B; box-shadow: 0 4px 12px rgba(255,75,75,0.2);" if is_warning else "border: 1px solid rgba(0,0,0,0.05);"
                                     w_prefix = "🚨 " if is_warning else ""
                                     
                                     card_html = (
