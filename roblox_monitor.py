@@ -177,24 +177,23 @@ def get_group_roles(group_id):
     return []
 def get_game_details(place_id):
     """獲取遊戲基本資訊 (Universe ID, 名稱, 總人數)"""
-    # 步驟 A: 獲取 Universe ID
+    # 步驟 1: 獲取 Universe ID
     u_url = f"https://apis.roblox.com/universes/v1/places/{place_id}/universe"
     try:
         u_res = requests.get(u_url).json()
         u_id = u_res.get("universeId")
         if not u_id: return None
         
-        # 步驟 B: 使用 Universe ID 獲取詳細資訊
+        # 步驟 2: 獲取詳細遊戲數據
         g_url = f"https://games.roblox.com/v1/games?universeIds={u_id}"
         g_res = requests.get(g_url).json()
         if g_res.get("data") and len(g_res["data"]) > 0:
             data = g_res["data"][0]
-            # 重要：將 universeId 補進 data 字典中，確保後端可以讀取
+            # 手動補入 universeId，防止後續讀取時發生 KeyError
             data['universeId'] = u_id 
             return data
-    except: pass
+    except Exception: pass
     return None
-
 def get_game_servers(place_id, limit=20):
     """獲取特定遊戲的公開伺服器清單"""
     url = f"https://games.roblox.com/v1/games/{place_id}/servers/Public?limit={limit}"
@@ -622,14 +621,13 @@ else:
                 with st.spinner("🕵️ 正在讀取遊戲伺服器雲端數據..."):
                     game_info = get_game_details(target_place_id)
                     
-                    # 修正點：加入詳細的安全檢查
+                    # 檢查資料是否完整
                     if not game_info or 'universeId' not in game_info:
-                        st.error("❌ 無法獲取該遊戲資訊或 Universe ID。這可能是因為該 Place ID 無效或 API 暫時限制。")
+                        st.error("❌ 無法獲取該遊戲資訊或 Universe ID。請確認 ID 是否正確。")
                     else:
-                        u_id = game_info['universeId'] # 現在安全了
+                        u_id = game_info['universeId']
                         game_thumb = get_game_thumbnail(u_id)
                         
-                        # 頂部儀表板：標題與基本資訊
                         st.markdown(f"### 🚀 監控目標：{game_info.get('name', '未知遊戲')}")
                         
                         with st.container(border=True):
@@ -637,7 +635,7 @@ else:
                             with info_c1:
                                 st.image(game_thumb, use_container_width=True, caption=f"Universe ID: {u_id}")
                             with info_c2:
-                                # 仿照 Tab 3 的美化排版
+                                # 顯示 Display Name 與 ID 於同一行
                                 st.markdown(f"""
                                     <div style='display: flex; align-items: baseline; gap: 12px; margin-bottom: 15px;'>
                                         <h2 style='margin: 0; font-weight: 800;'>{game_info.get('name', '未知')}</h2>
@@ -646,13 +644,10 @@ else:
                                 """, unsafe_allow_html=True)
                                 
                                 m1, m2, m3 = st.columns(3)
-                                with m1:
-                                    st.markdown(f"**🔥 當前總人數**\n### {game_info.get('playing', 0):,} <small>人</small>", unsafe_allow_html=True)
-                                with m2:
-                                    st.markdown(f"**⭐ 收藏總數**\n### {game_info.get('favoritedCount', 0):,} <small>次</small>", unsafe_allow_html=True)
-                                with m3:
-                                    # 修正：這筆 API 通常提供 rootPlaceId 或其他數值，這裡確保不崩潰
-                                    st.markdown(f"**📌 根場景 ID**\n### {game_info.get('rootPlaceId', 'N/A')}", unsafe_allow_html=True)
+                                # 使用 get 確保即便 API 欄位缺失也不會報錯
+                                m1.metric("🔥 當前總人數", f"{game_info.get('playing', 0):,} 人")
+                                m2.metric("⭐ 收藏總數", f"{game_info.get('favoritedCount', 0):,} 次")
+                                m3.metric("📌 根場景 ID", game_info.get('rootPlaceId', 'N/A'))
 
                                 if game_info.get('description'):
                                     with st.expander("📝 查看遊戲詳細介紹"):
