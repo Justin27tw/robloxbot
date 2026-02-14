@@ -175,7 +175,38 @@ def get_group_roles(group_id):
         elif res.status_code == 429: time.sleep(5); return get_group_roles(group_id)
     except Exception: pass
     return []
+def get_game_details(place_id):
+    """獲取遊戲基本資訊 (Universe ID, 名稱, 總人數)"""
+    u_url = f"https://apis.roblox.com/universes/v1/places/{place_id}/universe"
+    try:
+        u_res = requests.get(u_url).json()
+        universe_id = u_res.get("universeId")
+        if not universe_id: return None
+        
+        g_url = f"https://games.roblox.com/v1/games?universeIds={universe_id}"
+        g_res = requests.get(g_url).json()
+        if g_res.get("data"):
+            return g_res["data"][0]
+    except: pass
+    return None
 
+def get_game_servers(place_id, limit=20):
+    """獲取特定遊戲的公開伺服器清單"""
+    url = f"https://games.roblox.com/v1/games/{place_id}/servers/Public?limit={limit}"
+    try:
+        res = requests.get(url).json()
+        return res.get("data", [])
+    except: pass
+    return []
+
+def get_game_thumbnail(universe_id):
+    """獲取遊戲封面圖"""
+    url = f"https://thumbnails.roblox.com/v1/games/icons?universeIds={universe_id}&returnPolicy=PlaceHolder&size=150x150&format=Png&isCircular=false"
+    try:
+        res = requests.get(url).json()
+        if res.get("data"): return res["data"][0].get("imageUrl")
+    except: pass
+    return "https://tr.rbxcdn.com/38c6edcb50633730ff4cf39ac8859840/150/150/AvatarHeadshot/Png"
 def get_members_of_roles(group_id, selected_roles):
     members = []
     for role in selected_roles:
@@ -305,7 +336,8 @@ st.title("👁️‍🗨️ Roblox 深度情報交叉比對系統")
 if not WARNING_GROUP_IDS:
     st.error("👈 請先在左側邊欄輸入有效的「高風險社群 ID」！")
 else:
-    tab1, tab2, tab3 = st.tabs(["👤 單一目標深度掃描", "🛡️ 群組大範圍降維掃描", "🔍 玩家帳號深度查詢"])
+    # 更新導覽標籤
+    tab1, tab2, tab3, tab4 = st.tabs(["👤 單一目標深度掃描", "🛡️ 群組大範圍降維掃描", "🔍 玩家帳號深度查詢", "🎮 遊戲即時監控"])
 
     # ---------------- Tab 1: 單一目標掃描 ----------------
     with tab1:
@@ -565,3 +597,86 @@ else:
                                 
                         except Exception as e:
                             st.error(f"❌ 檢索失敗：{str(e)}")
+    # ---------------- Tab 4: 遊戲即時監控 ----------------
+    with tab4:
+        st.subheader("🎮 特定遊戲體驗 (Experience) 即時數據")
+        
+        # 查詢輸入區
+        with st.container(border=True):
+            t_col1, t_col2 = st.columns([3, 1])
+            with t_col1:
+                # 預設填入您提供的遊戲 ID
+                target_place_id = st.text_input("輸入遊戲 Place ID：", value="11750841896", placeholder="例如: 11750841896")
+            with t_col2:
+                st.markdown("<br>", unsafe_allow_html=True)
+                btn_game_scan = st.button("📡 啟動即時監控", type="primary", use_container_width=True)
+            
+        if btn_game_scan:
+            if not target_place_id.isdigit():
+                st.error("❌ 請輸入有效的數字 Place ID")
+            else:
+                with st.spinner("🕵️ 正在讀取遊戲伺服器雲端數據..."):
+                    game_info = get_game_details(target_place_id)
+                    if not game_info:
+                        st.error("❌ 無法獲取該遊戲資訊，請檢查 ID 是否正確。")
+                    else:
+                        universe_id = game_info['universeId']
+                        game_thumb = get_game_thumbnail(universe_id)
+                        
+                        # 頂部儀表板：標題與基本資訊
+                        st.markdown(f"### 🚀 監控目標：{game_info['name']}")
+                        
+                        with st.container(border=True):
+                            info_c1, info_c2 = st.columns([1, 3])
+                            with info_c1:
+                                st.image(game_thumb, use_container_width=True, caption=f"Universe ID: {universe_id}")
+                            with info_c2:
+                                # 仿照 Tab 3 的美化排版
+                                st.markdown(f"""
+                                    <div style='display: flex; align-items: baseline; gap: 12px; margin-bottom: 15px;'>
+                                        <h2 style='margin: 0; font-weight: 800;'>{game_info['name']}</h2>
+                                        <span style='color: #888; font-size: 1.1em;'>ID: {target_place_id}</span>
+                                    </div>
+                                """, unsafe_allow_html=True)
+                                
+                                m1, m2, m3 = st.columns(3)
+                                with m1:
+                                    st.markdown(f"**🔥 當前總人數**\n### {game_info['playing']:,} <small>人</small>", unsafe_allow_html=True)
+                                with m2:
+                                    st.markdown(f"**⭐ 收藏總數**\n### {game_info['favoritedCount']:,} <small>次</small>", unsafe_allow_html=True)
+                                with m3:
+                                    st.markdown(f"**👍 評分表現**\n### {game_info.get('upVotes', 0):,} <small>好評</small>", unsafe_allow_html=True)
+
+                                if game_info.get('description'):
+                                    with st.expander("📝 查看遊戲詳細介紹"):
+                                        st.write(game_info['description'])
+
+                        st.divider()
+                        
+                        # 伺服器詳情列表
+                        st.markdown("#### 🌐 公開伺服器即時狀況 (Top 20)")
+                        servers = get_game_servers(target_place_id)
+                        
+                        if servers:
+                            server_data = []
+                            for s in servers:
+                                # 建立快速進入連結
+                                join_link = f"roblox://experiences/start?placeId={target_place_id}&gameInstanceId={s['id']}"
+                                server_data.append({
+                                    "伺服器 ID": s['id'][:15] + "...",
+                                    "當前人數": f"{s['playing']} / {s['maxPlayers']}",
+                                    "延遲 (Ping)": f"{s['ping']} ms",
+                                    "FPS 表現": f"{s['fps']:.1f}",
+                                    "操作": join_link
+                                })
+                            
+                            st.dataframe(
+                                pd.DataFrame(server_data),
+                                column_config={
+                                    "操作": st.column_config.LinkColumn("🔗 快速加入伺服器", display_text="點擊加入")
+                                },
+                                hide_index=True,
+                                use_container_width=True
+                            )
+                        else:
+                            st.info("ℹ️ 此遊戲目前無公開伺服器資訊或暫無人遊玩。")
