@@ -177,16 +177,21 @@ def get_group_roles(group_id):
     return []
 def get_game_details(place_id):
     """獲取遊戲基本資訊 (Universe ID, 名稱, 總人數)"""
+    # 步驟 A: 獲取 Universe ID
     u_url = f"https://apis.roblox.com/universes/v1/places/{place_id}/universe"
     try:
         u_res = requests.get(u_url).json()
-        universe_id = u_res.get("universeId")
-        if not universe_id: return None
+        u_id = u_res.get("universeId")
+        if not u_id: return None
         
-        g_url = f"https://games.roblox.com/v1/games?universeIds={universe_id}"
+        # 步驟 B: 使用 Universe ID 獲取詳細資訊
+        g_url = f"https://games.roblox.com/v1/games?universeIds={u_id}"
         g_res = requests.get(g_url).json()
-        if g_res.get("data"):
-            return g_res["data"][0]
+        if g_res.get("data") and len(g_res["data"]) > 0:
+            data = g_res["data"][0]
+            # 重要：將 universeId 補進 data 字典中，確保後端可以讀取
+            data['universeId'] = u_id 
+            return data
     except: pass
     return None
 
@@ -610,47 +615,48 @@ else:
             with t_col2:
                 st.markdown("<br>", unsafe_allow_html=True)
                 btn_game_scan = st.button("📡 啟動即時監控", type="primary", use_container_width=True)
-            
         if btn_game_scan:
             if not target_place_id.isdigit():
                 st.error("❌ 請輸入有效的數字 Place ID")
             else:
                 with st.spinner("🕵️ 正在讀取遊戲伺服器雲端數據..."):
                     game_info = get_game_details(target_place_id)
-                    if not game_info:
-                        st.error("❌ 無法獲取該遊戲資訊，請檢查 ID 是否正確。")
+                    
+                    # 修正點：加入詳細的安全檢查
+                    if not game_info or 'universeId' not in game_info:
+                        st.error("❌ 無法獲取該遊戲資訊或 Universe ID。這可能是因為該 Place ID 無效或 API 暫時限制。")
                     else:
-                        universe_id = game_info['universeId']
-                        game_thumb = get_game_thumbnail(universe_id)
+                        u_id = game_info['universeId'] # 現在安全了
+                        game_thumb = get_game_thumbnail(u_id)
                         
                         # 頂部儀表板：標題與基本資訊
-                        st.markdown(f"### 🚀 監控目標：{game_info['name']}")
+                        st.markdown(f"### 🚀 監控目標：{game_info.get('name', '未知遊戲')}")
                         
                         with st.container(border=True):
                             info_c1, info_c2 = st.columns([1, 3])
                             with info_c1:
-                                st.image(game_thumb, use_container_width=True, caption=f"Universe ID: {universe_id}")
+                                st.image(game_thumb, use_container_width=True, caption=f"Universe ID: {u_id}")
                             with info_c2:
                                 # 仿照 Tab 3 的美化排版
                                 st.markdown(f"""
                                     <div style='display: flex; align-items: baseline; gap: 12px; margin-bottom: 15px;'>
-                                        <h2 style='margin: 0; font-weight: 800;'>{game_info['name']}</h2>
+                                        <h2 style='margin: 0; font-weight: 800;'>{game_info.get('name', '未知')}</h2>
                                         <span style='color: #888; font-size: 1.1em;'>ID: {target_place_id}</span>
                                     </div>
                                 """, unsafe_allow_html=True)
                                 
                                 m1, m2, m3 = st.columns(3)
                                 with m1:
-                                    st.markdown(f"**🔥 當前總人數**\n### {game_info['playing']:,} <small>人</small>", unsafe_allow_html=True)
+                                    st.markdown(f"**🔥 當前總人數**\n### {game_info.get('playing', 0):,} <small>人</small>", unsafe_allow_html=True)
                                 with m2:
-                                    st.markdown(f"**⭐ 收藏總數**\n### {game_info['favoritedCount']:,} <small>次</small>", unsafe_allow_html=True)
+                                    st.markdown(f"**⭐ 收藏總數**\n### {game_info.get('favoritedCount', 0):,} <small>次</small>", unsafe_allow_html=True)
                                 with m3:
-                                    st.markdown(f"**👍 評分表現**\n### {game_info.get('upVotes', 0):,} <small>好評</small>", unsafe_allow_html=True)
+                                    # 修正：這筆 API 通常提供 rootPlaceId 或其他數值，這裡確保不崩潰
+                                    st.markdown(f"**📌 根場景 ID**\n### {game_info.get('rootPlaceId', 'N/A')}", unsafe_allow_html=True)
 
                                 if game_info.get('description'):
                                     with st.expander("📝 查看遊戲詳細介紹"):
                                         st.write(game_info['description'])
-
                         st.divider()
                         
                         # 伺服器詳情列表
