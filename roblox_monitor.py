@@ -7,7 +7,10 @@ import re
 # ================= 配置區 =================
 REQUEST_DELAY = 0.5  
 # ==========================================
-
+HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Accept": "application/json"
+}
 # 網頁基礎設定 (寬螢幕模式)
 st.set_page_config(page_title="Roblox 情報與預警系統", page_icon="👁️‍🗨️", layout="wide")
 
@@ -54,34 +57,48 @@ def resolve_user_input(user_input):
     url_username_to_id = "https://users.roblox.com/v1/usernames/users"
     payload = {"usernames": [user_input], "excludeBannedUsers": False}
     try:
-        response = requests.post(url_username_to_id, json=payload)
+        # 【修正】加入 headers 與 timeout
+        response = requests.post(url_username_to_id, json=payload, headers=HEADERS, timeout=10)
         if response.status_code == 200:
             data = response.json().get("data", [])
             if len(data) > 0: return str(data[0]["id"]), data[0]["name"]
-    except: pass 
+        else:
+            # 【修正】如果被阻擋，顯示在畫面上方便除錯
+            st.error(f"API 解析名稱失敗 (狀態碼: {response.status_code})")
+    except Exception as e:
+        st.error(f"連線錯誤: {e}") 
+        
     if user_input.isdigit():
         url_verify_id = f"https://users.roblox.com/v1/users/{user_input}"
         try:
-            res = requests.get(url_verify_id)
+            # 【修正】加入 headers 與 timeout
+            res = requests.get(url_verify_id, headers=HEADERS, timeout=10)
             if res.status_code == 200: return str(res.json()["id"]), res.json()["name"]
-        except: pass
+            else:
+                st.error(f"API 解析 ID 失敗 (狀態碼: {res.status_code})")
+        except Exception as e:
+            st.error(f"連線錯誤: {e}")
     return None, None
 
 def get_user_thumbnail(user_id):
     default_img = "https://tr.rbxcdn.com/38c6edcb50633730ff4cf39ac8859840/150/150/AvatarHeadshot/Png"
     url = f"https://thumbnails.roblox.com/v1/users/avatar-headshot?userIds={user_id}&size=150x150&format=Png&isCircular=true"
     try:
-        res = requests.get(url, timeout=5).json()
-        if res.get("data") and len(res["data"]) > 0:
-            img_url = res["data"][0].get("imageUrl")
-            if img_url: return img_url
+        # 【修正】加入 headers
+        res = requests.get(url, headers=HEADERS, timeout=5)
+        if res.status_code == 200:
+            data = res.json()
+            if data.get("data") and len(data["data"]) > 0:
+                img_url = data["data"][0].get("imageUrl")
+                if img_url: return img_url
     except Exception: pass
     return default_img
 
 def get_user_groups(user_id):
     url = f"https://groups.roblox.com/v1/users/{user_id}/groups/roles"
     try:
-        response = requests.get(url)
+        # 【修正】加入 headers
+        response = requests.get(url, headers=HEADERS, timeout=10)
         if response.status_code == 200:
             data = response.json().get("data", [])
             return {item["group"]["id"]: {"name": item["group"]["name"], "role": item["role"]["name"], "rank": item["role"]["rank"]} for item in data}
@@ -99,7 +116,8 @@ def get_group_allies(group_id):
     while True:
         url = f"https://groups.roblox.com/v1/groups/{group_id}/relationships/allies?maxRows=100&startRowIndex={start_row}"
         try:
-            response = requests.get(url)
+            # 【修正】加入 headers
+            response = requests.get(url, headers=HEADERS, timeout=10)
             if response.status_code == 200:
                 data = response.json()
                 for grp in data.get("relatedGroups", []): allies[grp["id"]] = grp["name"]
@@ -113,13 +131,13 @@ def get_group_allies(group_id):
     st.session_state.group_allies_cache[group_id] = allies
     return allies
 
-# 【修正重點】加入 cursor 循環，確保好友不論人數多寡都能掃描完畢
 def get_user_friends(user_id):
     friends, cursor = [], ""
     while cursor is not None:
         url = f"https://friends.roblox.com/v1/users/{user_id}/friends?limit=100" + (f"&cursor={cursor}" if cursor else "")
         try:
-            res = requests.get(url)
+            # 【修正】加入 headers
+            res = requests.get(url, headers=HEADERS, timeout=10)
             if res.status_code == 200:
                 json_data = res.json()
                 friends.extend([{"id": u["id"], "name": u["name"]} for u in json_data.get("data", [])])
@@ -139,7 +157,8 @@ def get_user_followers(user_id, limit=None):
         if limit and len(followers) >= limit: break
         url = f"https://friends.roblox.com/v1/users/{user_id}/followers?limit=100" + (f"&cursor={cursor}" if cursor else "")
         try:
-            res = requests.get(url)
+            # 【修正】加入 headers
+            res = requests.get(url, headers=HEADERS, timeout=10)
             if res.status_code == 200:
                 json_data = res.json()
                 followers.extend([{"id": u["id"], "name": u["name"]} for u in json_data.get("data", [])])
@@ -156,7 +175,8 @@ def get_user_followings(user_id, limit=None):
         if limit and len(followings) >= limit: break
         url = f"https://friends.roblox.com/v1/users/{user_id}/followings?limit=100" + (f"&cursor={cursor}" if cursor else "")
         try:
-            res = requests.get(url)
+            # 【修正】加入 headers
+            res = requests.get(url, headers=HEADERS, timeout=10)
             if res.status_code == 200:
                 json_data = res.json()
                 followings.extend([{"id": u["id"], "name": u["name"]} for u in json_data.get("data", [])])
@@ -170,47 +190,55 @@ def get_user_followings(user_id, limit=None):
 def get_group_roles(group_id):
     url = f"https://groups.roblox.com/v1/groups/{group_id}/roles"
     try:
-        res = requests.get(url)
+        # 【修正】加入 headers
+        res = requests.get(url, headers=HEADERS, timeout=10)
         if res.status_code == 200: return res.json().get("roles", [])
         elif res.status_code == 429: time.sleep(5); return get_group_roles(group_id)
     except Exception: pass
     return []
+
 def get_game_details(place_id):
-    """獲取遊戲基本資訊 (Universe ID, 名稱, 總人數)"""
-    # 步驟 1: 獲取 Universe ID
     u_url = f"https://apis.roblox.com/universes/v1/places/{place_id}/universe"
     try:
-        u_res = requests.get(u_url).json()
-        u_id = u_res.get("universeId")
-        if not u_id: return None
-        
-        # 步驟 2: 獲取詳細遊戲數據
-        g_url = f"https://games.roblox.com/v1/games?universeIds={u_id}"
-        g_res = requests.get(g_url).json()
-        if g_res.get("data") and len(g_res["data"]) > 0:
-            data = g_res["data"][0]
-            # 手動補入 universeId，防止後續讀取時發生 KeyError
-            data['universeId'] = u_id 
-            return data
+        # 【修正】加入 headers
+        u_res = requests.get(u_url, headers=HEADERS, timeout=10)
+        if u_res.status_code == 200:
+            u_data = u_res.json()
+            u_id = u_data.get("universeId")
+            if not u_id: return None
+            
+            g_url = f"https://games.roblox.com/v1/games?universeIds={u_id}"
+            g_res = requests.get(g_url, headers=HEADERS, timeout=10)
+            if g_res.status_code == 200:
+                g_data = g_res.json()
+                if g_data.get("data") and len(g_data["data"]) > 0:
+                    data = g_data["data"][0]
+                    data['universeId'] = u_id 
+                    return data
     except Exception: pass
     return None
+
 def get_game_servers(place_id, limit=20):
-    """獲取特定遊戲的公開伺服器清單"""
     url = f"https://games.roblox.com/v1/games/{place_id}/servers/Public?limit={limit}"
     try:
-        res = requests.get(url).json()
-        return res.get("data", [])
+        # 【修正】加入 headers
+        res = requests.get(url, headers=HEADERS, timeout=10)
+        if res.status_code == 200:
+            return res.json().get("data", [])
     except: pass
     return []
 
 def get_game_thumbnail(universe_id):
-    """獲取遊戲封面圖"""
     url = f"https://thumbnails.roblox.com/v1/games/icons?universeIds={universe_id}&returnPolicy=PlaceHolder&size=150x150&format=Png&isCircular=false"
     try:
-        res = requests.get(url).json()
-        if res.get("data"): return res["data"][0].get("imageUrl")
+        # 【修正】加入 headers
+        res = requests.get(url, headers=HEADERS, timeout=5)
+        if res.status_code == 200:
+            data = res.json()
+            if data.get("data"): return data["data"][0].get("imageUrl")
     except: pass
     return "https://tr.rbxcdn.com/38c6edcb50633730ff4cf39ac8859840/150/150/AvatarHeadshot/Png"
+
 def get_members_of_roles(group_id, selected_roles):
     members = []
     for role in selected_roles:
@@ -218,7 +246,8 @@ def get_members_of_roles(group_id, selected_roles):
         while cursor is not None:
             url = f"https://groups.roblox.com/v1/groups/{group_id}/roles/{role_id}/users?sortOrder=Desc&limit=100" + (f"&cursor={cursor}" if cursor else "")
             try:
-                res = requests.get(url)
+                # 【修正】加入 headers
+                res = requests.get(url, headers=HEADERS, timeout=10)
                 if res.status_code == 200:
                     data = res.json()
                     for item in data.get("data", []):
@@ -231,7 +260,6 @@ def get_members_of_roles(group_id, selected_roles):
                 else: break
             except Exception: break
     return members
-
 # === UI 排版與視覺化資料處理函數 ===
 
 def get_rank_style(rank_num, role_name=""):
@@ -365,7 +393,8 @@ else:
                     # 【新增顯示】在畫面上方顯示總好友數
                     f_count_api = f"https://friends.roblox.com/v1/users/{uid}/friends/count"
                     try:
-                        f_count = requests.get(f_count_api).json().get("count", 0)
+                        # 修改這裡
+                        f_count = requests.get(f_count_api, headers=HEADERS, timeout=10).json().get("count", 0)
                     except:
                         f_count = "未知"
                     st.success(f"✅ 鎖定目標：{uname} (ID: {uid}) | 👥 好友總數：{f_count}")
@@ -507,9 +536,9 @@ else:
                         st.error("❌ 無法找到該玩家，請確認名稱或 ID 是否正確。")
                     else:
                         try:
-                            # 資料獲取
-                            detail_res = requests.get(f"https://users.roblox.com/v1/users/{target_uid}").json()
-                            friend_count = requests.get(f"https://friends.roblox.com/v1/users/{target_uid}/friends/count").json().get("count", "未知")
+                            # 修改這裡
+                            detail_res = requests.get(f"https://users.roblox.com/v1/users/{target_uid}", headers=HEADERS, timeout=10).json()
+                            friend_count = requests.get(f"https://friends.roblox.com/v1/users/{target_uid}/friends/count", headers=HEADERS, timeout=10).json().get("count", "未知")
                             avatar_url = get_user_thumbnail(target_uid)
                             profile_url = f"https://www.roblox.com/users/{target_uid}/profile"
                             
